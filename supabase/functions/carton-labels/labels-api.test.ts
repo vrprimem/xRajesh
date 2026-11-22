@@ -35,6 +35,21 @@ test("prints labels: logs in, asks for the product at the warehouse, returns ser
   assert.equal(server.calls.length, 2, "two requests in all: log in, print");
 });
 
+test("the carton weight goes with the labels, as the inventory software's own print button sends it", async () => {
+  const server = fakeServer({
+    "POST /auth/login/": { body: { access: "t" } },
+    "POST /products/X/carton-labels/": { body: { labels: [{ serial: "1010000000000001", svg: SVG }] } },
+  });
+  const api = client(server);
+  await api.login();
+  await api.print("X", "1", 1, 24, 8.46);
+  assert.deepEqual(server.calls[1].body, { warehouseId: 1, count: 1, qtyPerCarton: 24, is_prepacked: false, weight_per_carton: "8.46" });
+  await api.print("X", "1", 1, 24);
+  assert.equal((server.calls[2].body as Record<string, unknown>).weight_per_carton, undefined, "no weight, no field");
+  await assert.rejects(api.print("X", "1", 1, 24, 0), /more than 0/);
+  await assert.rejects(api.print("X", "1", 1, 24, Number.NaN), /more than 0/);
+});
+
 test("reads label states, as a plain list or as a page", async () => {
   const list = [{ serial: "1010001071105027", state: "printed" }, { serial: "1010001071107169", state: "outbound" }, { serial: 5, state: "x" }];
   for (const body of [list, { count: 3, results: list }]) {

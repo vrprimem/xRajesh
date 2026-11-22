@@ -97,11 +97,21 @@ export function createLabelsClient(options: { username: string; password: string
       token = body.access;
     },
 
-    /** Prints `count` labels (1 to 50) for a product at a warehouse. Exactly what was asked for must come back. */
-    async print(code: string, warehouseVid: string, count: number, qtyPerCarton: number): Promise<PrintedLabel[]> {
+    /**
+     * Prints `count` labels (1 to 50) for a product at a warehouse, with the carton weight in kg when there is one (the
+     * label's "weight per carton"; the product's own weight is not touched). Exactly what was asked for must come back.
+     */
+    async print(code: string, warehouseVid: string, count: number, qtyPerCarton: number, weightKg: number | null = null): Promise<PrintedLabel[]> {
       if (!Number.isInteger(count) || count < 1 || count > MAX_PER_REQUEST) throw new LabelsApiError("Labels are printed 1 to 50 at a time");
       if (!Number.isInteger(qtyPerCarton) || qtyPerCarton < 1) throw new LabelsApiError("Pieces per carton must be a whole number from 1");
-      const body = (await request("POST", `/products/${sku(code)}/carton-labels/`, { warehouseId: warehouse(warehouseVid), count, qtyPerCarton, is_prepacked: false })) as { labels?: unknown };
+      if (weightKg !== null && !(Number.isFinite(weightKg) && weightKg > 0 && weightKg <= 1000)) throw new LabelsApiError("Carton weight must be more than 0 and at most 1000 kg");
+      const body = (await request("POST", `/products/${sku(code)}/carton-labels/`, {
+        warehouseId: warehouse(warehouseVid),
+        count,
+        qtyPerCarton,
+        is_prepacked: false,
+        ...(weightKg !== null ? { weight_per_carton: String(weightKg) } : {}),
+      })) as { labels?: unknown };
       const list = Array.isArray(body?.labels) ? body.labels : [];
       const out: PrintedLabel[] = [];
       for (const item of list) {

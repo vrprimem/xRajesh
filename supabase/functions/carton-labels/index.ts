@@ -55,7 +55,7 @@ async function api() {
   return client;
 }
 
-type Line = { product_id: string; sku: string; carton_type: string; units: number; need: number };
+type Line = { product_id: string; sku: string; carton_type: string; units: number; need: number; weight: number | string | null };
 
 /** Prints and saves the labels a dispatch still needs. Each batch is saved at once, so a stop half way loses nothing. */
 async function issue(db: SupabaseClient, dispatchId: string): Promise<string> {
@@ -70,7 +70,8 @@ async function issue(db: SupabaseClient, dispatchId: string): Promise<string> {
     for (const line of lines) {
       let need = line.need;
       while (need > 0) {
-        const labels = await inventory.print(line.sku, warehouse_vid, Math.min(MAX_PER_REQUEST, need), line.units);
+        const weight = line.weight === null || line.weight === undefined ? null : Number(line.weight);
+        const labels = await inventory.print(line.sku, warehouse_vid, Math.min(MAX_PER_REQUEST, need), line.units, weight);
         const { error: saveError } = await db.rpc("supplier_labels_save", {
           p_dispatch: dispatchId,
           p_rows: labels.map((l) => ({ product_id: line.product_id, carton_type: line.carton_type, units: line.units, serial: l.serial, svg: l.svg })),

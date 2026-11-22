@@ -61,6 +61,7 @@ const productSchema = z.object({
   carton_type: z.enum(["H", "T"]),
   daily_capacity: z.number().int().min(0).max(10000000).nullable(),
   active: z.boolean(),
+  weight_per_carton: z.number().gt(0).max(1000).nullable(),
 });
 
 /** Adds or updates products by name: one from the form, or many from the sheet. Never removes any. */
@@ -71,7 +72,7 @@ export async function saveProducts(supplierId: unknown, rows: unknown): Promise<
   const supplier = supplierFor(who, supplierId);
   if (!supplier) return NOT_ALLOWED;
   const parsed = z.array(productSchema).min(1).max(MAX_PRODUCT_ROWS).safeParse(rows);
-  if (!parsed.success) return { ok: false, message: "Check the product: it needs a name and units per carton (a whole number from 1)." };
+  if (!parsed.success) return { ok: false, message: "Check the product: it needs a name, units per carton (a whole number from 1), and a carton weight above 0 kg if one is given." };
   const list: ProductInput[] = parsed.data;
   const db = await supplierDb();
   const { data, error } = await db.rpc("supplier_products_save", { p_supplier: supplier, p_rows: list });

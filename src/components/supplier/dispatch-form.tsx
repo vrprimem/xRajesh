@@ -117,7 +117,12 @@ export function DispatchForm({ supplierId, products, base, tomorrow }: { supplie
                 <button type="button" aria-label={`Remove line ${i + 1}`} disabled={lines.length === 1} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} className={buttonClass("ghost")}>
                   Remove
                 </button>
-                {p && Number.isInteger(n) && n > 0 ? <p className="t-caption col-span-full">{formatNumber(n * p.units_per_carton)} units</p> : null}
+                {p && Number.isInteger(n) && n > 0 ? (
+                  <p className="t-caption col-span-full">
+                    {formatNumber(n * p.units_per_carton)} units
+                    {p.weight_per_carton ? ` · ${formatNumber(Math.round(n * p.weight_per_carton))} kg` : " · no carton weight set"}
+                  </p>
+                ) : null}
               </div>
             );
           })}

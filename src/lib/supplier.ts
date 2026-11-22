@@ -106,6 +106,8 @@ export type ProductInput = {
   carton_type: CartonType;
   daily_capacity: number | null;
   active: boolean;
+  /** Carton weight in kg, sent to the inventory software with every label. */
+  weight_per_carton: number | null;
 };
 
 export const MAX_PRODUCT_ROWS = 2000;
@@ -118,7 +120,17 @@ const COLUMNS: Record<keyof Omit<ProductInput, "active">, string[]> = {
   units_per_carton: ["unitspercarton", "pcspercarton", "piecespercarton", "pcscarton", "cartonqty", "unitscarton", "packsize", "pcs"],
   carton_type: ["cartontype", "carton", "defaultcartontype"],
   daily_capacity: ["dailycapacity", "capacity", "dailyproductioncapacity", "perday", "capacityperday"],
+  weight_per_carton: ["cartonweight", "weightpercarton", "weight", "weightkg", "cartonweightkg", "weightpercartonkg", "kgpercarton"],
 };
+
+/** A weight in kg: a number above 0, at most 1000, to 2 places. Empty is no weight; anything else is a mistake. */
+export function parseWeight(text: string): number | null | "bad" {
+  const t = text.replace(/,/g, "").replace(/\s*kgs?\s*$/i, "").trim();
+  if (t === "") return null;
+  if (!/^\d+(\.\d+)?$/.test(t)) return "bad";
+  const n = Math.round(Number(t) * 100) / 100;
+  return n > 0 && n <= 1000 ? n : "bad";
+}
 
 function categoryOf(text: string): ProductCategory | null {
   const k = key(text);
@@ -158,6 +170,7 @@ export function parseProductsTable(lines: string[][]): { rows: ProductInput[]; e
     units: col(COLUMNS.units_per_carton),
     carton: col(COLUMNS.carton_type),
     capacity: col(COLUMNS.daily_capacity),
+    weight: col(COLUMNS.weight_per_carton),
   };
   if (at.name < 0) errors.push('No "Name" column was found in the first row.');
   if (at.units < 0) errors.push('No "Units per carton" column was found in the first row.');
@@ -183,7 +196,9 @@ export function parseProductsTable(lines: string[][]): { rows: ProductInput[]; e
     const capText = cell(line, at.capacity);
     const capacity = capText === "" ? null : wholeNumber(capText);
     if (capText !== "" && capacity === null) return void errors.push(`Row ${rowNo} (${name}): daily capacity must be a whole number.`);
-    rows.push({ name, master_code: cell(line, at.master) || null, category, units_per_carton: units, carton_type: carton, daily_capacity: capacity, active: true });
+    const weight = parseWeight(cell(line, at.weight));
+    if (weight === "bad") return void errors.push(`Row ${rowNo} (${name}): carton weight "${cell(line, at.weight)}" must be a number of kg above 0.`);
+    rows.push({ name, master_code: cell(line, at.master) || null, category, units_per_carton: units, carton_type: carton, daily_capacity: capacity, active: true, weight_per_carton: weight });
   });
   if (rows.length > MAX_PRODUCT_ROWS) errors.push(`The sheet has ${rows.length} products; ${MAX_PRODUCT_ROWS} at most in one go.`);
   if (!rows.length && !errors.length) errors.push("The sheet has no products under its headings.");

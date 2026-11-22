@@ -11,6 +11,7 @@ import {
   isCartonBarcode,
   labelsOwed,
   parseProductsTable,
+  parseWeight,
   plainSvg,
   readPending,
   suggestedUnits,
@@ -71,17 +72,17 @@ test("the barcode picture has a quiet zone and one bar per odd width", () => {
 
 test("products sheet: headings found by name, defaults filled", () => {
   const { rows, errors } = parseProductsTable([
-    ["Product Name", "VRPRIME Master SKU", "Category", "Pcs per carton", "Carton type", "Daily capacity"],
-    ["Kitchen Cleaner 500ml", "150-KC", "Kitchen cleaner", "24", "Hard", "1,200"],
-    ["Rat Repellent Spray", "", "repellent", "48", "2-ply", ""],
-    ["", "", "", "", "", ""],
-    ["Glass Cleaner", "151-GC", "", "12", "", ""],
+    ["Product Name", "VRPRIME Master SKU", "Category", "Pcs per carton", "Carton type", "Daily capacity", "Carton weight (kg)"],
+    ["Kitchen Cleaner 500ml", "150-KC", "Kitchen cleaner", "24", "Hard", "1,200", "12.5"],
+    ["Rat Repellent Spray", "", "repellent", "48", "2-ply", "", ""],
+    ["", "", "", "", "", "", ""],
+    ["Glass Cleaner", "151-GC", "", "12", "", "", "6 kg"],
   ]);
   assert.deepEqual(errors, []);
   assert.deepEqual(rows, [
-    { name: "Kitchen Cleaner 500ml", master_code: "150-KC", category: "kitchen_cleaner", units_per_carton: 24, carton_type: "H", daily_capacity: 1200, active: true },
-    { name: "Rat Repellent Spray", master_code: null, category: "repellent", units_per_carton: 48, carton_type: "T", daily_capacity: null, active: true },
-    { name: "Glass Cleaner", master_code: "151-GC", category: "other", units_per_carton: 12, carton_type: "H", daily_capacity: null, active: true },
+    { name: "Kitchen Cleaner 500ml", master_code: "150-KC", category: "kitchen_cleaner", units_per_carton: 24, carton_type: "H", daily_capacity: 1200, active: true, weight_per_carton: 12.5 },
+    { name: "Rat Repellent Spray", master_code: null, category: "repellent", units_per_carton: 48, carton_type: "T", daily_capacity: null, active: true, weight_per_carton: null },
+    { name: "Glass Cleaner", master_code: "151-GC", category: "other", units_per_carton: 12, carton_type: "H", daily_capacity: null, active: true, weight_per_carton: 6 },
   ]);
 });
 
@@ -100,6 +101,16 @@ test("products sheet: a problem names its row and nothing is imported", () => {
   assert.match(bad.errors[2], /Row 5 \(C\).*Plastic/);
   assert.match(parseProductsTable([["Item code", "Qty"]]).errors.join(" "), /No "Name" column/);
   assert.match(parseProductsTable([["Name", "Units per carton"]]).errors.join(" "), /no products/);
+});
+
+test("carton weight: kg above 0, to 2 places; empty is none", () => {
+  assert.equal(parseWeight("8.456"), 8.46);
+  assert.equal(parseWeight(" 12 kg "), 12);
+  assert.equal(parseWeight(""), null);
+  assert.equal(parseWeight("0"), "bad");
+  assert.equal(parseWeight("-2"), "bad");
+  assert.equal(parseWeight("heavy"), "bad");
+  assert.equal(parseWeight("1001"), "bad");
 });
 
 test("dispatch counts: planned from the plan, the rest from the labels, split by carton type", () => {

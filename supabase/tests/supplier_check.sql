@@ -179,7 +179,7 @@ begin
   end;
   assert blocked, 'an unknown master SKU refuses the whole list';
 
-  res := public.supplier_products_save(s_a, '[{"name":"SP Kitchen Cleaner","master_code":"spchk-1","category":"kitchen_cleaner","units_per_carton":24,"carton_type":"H"},
+  res := public.supplier_products_save(s_a, '[{"name":"SP Kitchen Cleaner","master_code":"spchk-1","category":"kitchen_cleaner","units_per_carton":24,"carton_type":"H","weight_per_carton":8.456},
                                               {"name":"SP Second","master_code":"SPCHK-2","units_per_carton":12,"carton_type":"T"},
                                               {"name":"SP Unlinked","units_per_carton":12,"carton_type":"T"}]'::jsonb);
   assert (res->>'added')::int = 3, 'three products added';
@@ -188,6 +188,15 @@ begin
   select id into strict p_a from public.supplier_products where supplier_id = s_a and master_id = m_a;
   select id into strict p_a2 from public.supplier_products where supplier_id = s_a and name = 'SP Second';
   assert (select units_per_carton from public.supplier_products where id = p_a) = 20, 'units per carton updated';
+  assert (select weight_per_carton from public.supplier_products where id = p_a) is null, 'saving without a weight clears it';
+  perform public.supplier_products_save(s_a, '[{"name":"SP Kitchen Cleaner","master_code":"SPCHK-1","category":"kitchen_cleaner","units_per_carton":20,"weight_per_carton":8.456}]'::jsonb);
+  assert (select weight_per_carton from public.supplier_products where id = p_a) = 8.46, 'carton weight is kept in kg, to 2 places';
+  blocked := false;
+  begin
+    perform public.supplier_products_save(s_a, '[{"name":"SP Kitchen Cleaner","units_per_carton":20,"weight_per_carton":-1}]'::jsonb);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a carton weight of 0 or less is refused';
 
   -- The scanner cannot change products.
   perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
@@ -256,6 +265,8 @@ begin
   assert jsonb_array_length(res->'lines') = 2 and (select sum((l->>'need')::int) from jsonb_array_elements(res->'lines') l) = 5,
     'one label is owed per planned carton';
   assert (select count(*) from jsonb_array_elements(res->'lines') l where l->>'sku' in ('SPCHK-1', 'SPCHK-2')) = 2, 'each line names the inventory software''s product';
+  assert (select (l->>'weight')::numeric from jsonb_array_elements(res->'lines') l where l->>'sku' = 'SPCHK-1') = 8.46, 'the carton weight goes to the inventory software with the labels';
+  assert (select l->'weight' from jsonb_array_elements(res->'lines') l where l->>'sku' = 'SPCHK-2') = 'null'::jsonb, 'a product with no weight sends none';
   assert public.supplier_labels_claim(d_a) is null, 'a second run cannot take the dispatch while the first is working';
   select jsonb_agg(to_jsonb(x)) into lab from (
     select l.product_id, l.carton_type, l.units_per_carton as units,
@@ -263,6 +274,7 @@ begin
     from public.supplier_dispatch_lines l, generate_series(1, l.cartons) g where l.dispatch_id = d_a) x;
   n := public.supplier_labels_save(d_a, lab);
   assert n = 5, 'the five printed labels are saved';
+  assert (select count(*) from public.supplier_cartons where dispatch_id = d_a and product_id = p_a and weight_per_carton = 8.46) = 3, 'each label carries its carton weight';
   n := public.supplier_labels_save(d_a, lab);
   assert n = 0, 'the same labels sent twice are saved once';
   n := public.supplier_labels_save(d_a, jsonb_build_array(jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 20, 'serial', '1010000000009999', 'svg', null)));

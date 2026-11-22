@@ -23,10 +23,10 @@ const pid = (n: number) => `00000000-0000-4000-8000-0000000000${String(n).padSta
 const code = (n: number) => `101${String(n).padStart(13, "0")}`;
 
 const PRODUCTS: ProductRow[] = [
-  { id: pid(1), name: "Kitchen Cleaner Spray 500ml", master_id: pid(51), master_code: "150-KITCHEN", category: "kitchen_cleaner", units_per_carton: 24, carton_type: "H", daily_capacity: 1200, active: true },
-  { id: pid(2), name: "Rat Repellent Spray 300ml", master_id: pid(52), master_code: "160-RAT", category: "repellent", units_per_carton: 48, carton_type: "T", daily_capacity: 900, active: true },
-  { id: pid(3), name: "Lizard Repellent Spray 250ml", master_id: null, master_code: null, category: "repellent", units_per_carton: 60, carton_type: "T", daily_capacity: null, active: true },
-  { id: pid(4), name: "Scratch Remover Bottle 150ml", master_id: pid(54), master_code: "150-SCRATCH", category: "other_cleaning", units_per_carton: 110, carton_type: "H", daily_capacity: 2000, active: false },
+  { id: pid(1), name: "Kitchen Cleaner Spray 500ml", master_id: pid(51), master_code: "150-KITCHEN", category: "kitchen_cleaner", units_per_carton: 24, carton_type: "H", daily_capacity: 1200, active: true, weight_per_carton: 8.5 },
+  { id: pid(2), name: "Rat Repellent Spray 300ml", master_id: pid(52), master_code: "160-RAT", category: "repellent", units_per_carton: 48, carton_type: "T", daily_capacity: 900, active: true, weight_per_carton: 8.5 },
+  { id: pid(3), name: "Lizard Repellent Spray 250ml", master_id: null, master_code: null, category: "repellent", units_per_carton: 60, carton_type: "T", daily_capacity: null, active: true, weight_per_carton: 8.5 },
+  { id: pid(4), name: "Scratch Remover Bottle 150ml", master_id: pid(54), master_code: "150-SCRATCH", category: "other_cleaning", units_per_carton: 110, carton_type: "H", daily_capacity: 2000, active: false, weight_per_carton: 8.5 },
 ];
 
 function fakeCartons(): CartonRow[] {
@@ -34,7 +34,7 @@ function fakeCartons(): CartonRow[] {
   const add = (product: ProductRow, type: CartonType, count: number, loaded: number) => {
     for (let i = 0; i < count; i++) {
       const no = out.length + 1;
-      out.push({ id: `c${no}`, product_id: product.id, product: product.name, carton_type: type, units: product.units_per_carton, carton_no: no, barcode: code(4800 + no), status: i < loaded ? "loaded" : "issued", loaded_at: i < loaded ? "2026-11-23T05:40:00Z" : null, void_reason: null, inbound_status: null });
+      out.push({ id: `c${no}`, product_id: product.id, product: product.name, carton_type: type, units: product.units_per_carton, carton_no: no, barcode: code(4800 + no), status: i < loaded ? "loaded" : "issued", loaded_at: i < loaded ? "2026-11-23T05:40:00Z" : null, void_reason: null, inbound_status: null, weight_per_carton: product.carton_type === "H" ? 8.5 : 6.2 });
     }
   };
   add(PRODUCTS[0], "H", 6, 4);

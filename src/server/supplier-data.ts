@@ -28,6 +28,7 @@ export type ProductRow = {
   carton_type: CartonType;
   daily_capacity: number | null;
   active: boolean;
+  weight_per_carton: number | null;
 };
 export type StockRow = {
   product_id: string;
@@ -68,6 +69,8 @@ export type CartonRow = {
   status: "issued" | "loaded" | "void";
   loaded_at: string | null;
   void_reason: string | null;
+  /** Carton weight in kg, as sent to the inventory software with the label. */
+  weight_per_carton: number | null;
   /** Scanned in at VRPRIME's warehouse, as the inventory software shows it. */
   inbound_status: "received" | "rejected" | null;
 };
@@ -121,7 +124,7 @@ export async function loadSupplier(id: string): Promise<Supplier | null> {
 export async function loadProducts(supplierId: string): Promise<ProductRow[]> {
   const db = await supplierDb();
   const [products, stock] = await Promise.all([
-    db.from("supplier_products").select("id, name, master_id, category, units_per_carton, carton_type, daily_capacity, active").eq("supplier_id", supplierId).order("name").limit(5000),
+    db.from("supplier_products").select("id, name, master_id, category, units_per_carton, carton_type, daily_capacity, active, weight_per_carton").eq("supplier_id", supplierId).order("name").limit(5000),
     db.rpc("supplier_stock", { p_supplier: supplierId }),
   ]);
   const codes = new Map<string, string | null>(((stock.data ?? []) as StockRow[]).map((s) => [s.product_id, s.master_code]));
@@ -193,7 +196,7 @@ export async function loadDispatch(id: string): Promise<DispatchDetail | null> {
   const d = dispatch as DispatchRow;
   const [lines, cartons, products] = await Promise.all([
     db.from("supplier_dispatch_lines").select("product_id, carton_type, units_per_carton, cartons").eq("dispatch_id", id).limit(1000),
-    db.from("supplier_cartons").select("id, product_id, carton_type, units, carton_no, barcode, status, loaded_at, void_reason, inbound_status").eq("dispatch_id", id).order("carton_no").limit(20000),
+    db.from("supplier_cartons").select("id, product_id, carton_type, units, carton_no, barcode, status, loaded_at, void_reason, inbound_status, weight_per_carton").eq("dispatch_id", id).order("carton_no").limit(20000),
     db.from("supplier_products").select("id, name").eq("supplier_id", d.supplier_id).limit(5000),
   ]);
   const names = new Map<string, string>(((products.data ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name]));

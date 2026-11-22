@@ -5,12 +5,12 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Card, Chip, EmptyState, Field, buttonClass } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
-import { CARTON_TYPE_LABEL, CATEGORY_LABEL, PRODUCT_CATEGORIES, parseProductsTable, type CartonType, type ProductCategory, type ProductInput } from "@/lib/supplier";
+import { CARTON_TYPE_LABEL, CATEGORY_LABEL, PRODUCT_CATEGORIES, parseProductsTable, parseWeight, type CartonType, type ProductCategory, type ProductInput } from "@/lib/supplier";
 import { saveProducts } from "@/server/actions/supplier";
 import type { ProductRow } from "@/server/supplier-data";
 
-type Form = { name: string; master_code: string; category: ProductCategory; units: string; carton_type: CartonType; capacity: string; active: boolean; editing: boolean };
-const EMPTY: Form = { name: "", master_code: "", category: "other", units: "", carton_type: "H", capacity: "", active: true, editing: false };
+type Form = { name: string; master_code: string; category: ProductCategory; units: string; carton_type: CartonType; capacity: string; weight: string; active: boolean; editing: boolean };
+const EMPTY: Form = { name: "", master_code: "", category: "other", units: "", carton_type: "H", capacity: "", weight: "", active: true, editing: false };
 
 /**
  * The supplier's products: search, filter by category, add or edit one, and import the whole sheet (.xlsx or .csv).
@@ -47,8 +47,10 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
     if (!form.name.trim()) return setProblems(["Enter the product name."]);
     if (!Number.isInteger(units) || units < 1) return setProblems(["Units per carton must be a whole number from 1."]);
     if (capacity !== null && (!Number.isInteger(capacity) || capacity < 0)) return setProblems(["Daily capacity must be a whole number."]);
+    const weight = parseWeight(form.weight);
+    if (weight === "bad") return setProblems(["Carton weight must be a number of kg above 0, for example 8.5."]);
     setProblems([]);
-    save([{ name: form.name.trim(), master_code: form.master_code.trim() || null, category: form.category, units_per_carton: units, carton_type: form.carton_type, daily_capacity: capacity, active: form.active }], () => setForm(null));
+    save([{ name: form.name.trim(), master_code: form.master_code.trim() || null, category: form.category, units_per_carton: units, carton_type: form.carton_type, daily_capacity: capacity, active: form.active, weight_per_carton: weight }], () => setForm(null));
   };
 
   const importFile = async (file: File) => {
@@ -67,7 +69,7 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
 
   const edit = (p: ProductRow) => {
     setProblems([]);
-    setForm({ name: p.name, master_code: p.master_code ?? "", category: p.category, units: String(p.units_per_carton), carton_type: p.carton_type, capacity: p.daily_capacity === null ? "" : String(p.daily_capacity), active: p.active, editing: true });
+    setForm({ name: p.name, master_code: p.master_code ?? "", category: p.category, units: String(p.units_per_carton), carton_type: p.carton_type, capacity: p.daily_capacity === null ? "" : String(p.daily_capacity), weight: p.weight_per_carton === null ? "" : String(p.weight_per_carton), active: p.active, editing: true });
   };
 
   return (
@@ -97,7 +99,7 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
 
       {canEdit ? (
         <p className="t-caption">
-          Import sheet: an .xlsx or .csv whose first row has the headings Name and Units per carton, and optionally Master SKU, Category, Carton type (Hard or 2-ply) and Daily capacity. Products are matched by name: new names are added, existing ones updated, nothing is removed.
+          Import sheet: an .xlsx or .csv whose first row has the headings Name and Units per carton, and optionally Master SKU, Category, Carton type (Hard or 2-ply), Carton weight (kg) and Daily capacity. Products are matched by name: new names are added, existing ones updated, nothing is removed.
         </p>
       ) : null}
 
@@ -148,6 +150,9 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
                   <option value="T">2-ply</option>
                 </select>
               </Field>
+              <Field label="Carton weight (kg)" htmlFor="sp-weight" hint="A full carton, for example 8.5. Printed on the label and sent to the VRPRIME inventory software with it.">
+                <input id="sp-weight" className="input" inputMode="decimal" placeholder="e.g. 8.5" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} />
+              </Field>
               <Field label="Daily production capacity" htmlFor="sp-cap" hint="Units a day.">
                 <input id="sp-cap" className="input" inputMode="numeric" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} />
               </Field>
@@ -180,6 +185,7 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
                 <th scope="col">Category</th>
                 <th scope="col" className="num">Units / carton</th>
                 <th scope="col">Carton</th>
+                <th scope="col" className="num">Weight</th>
                 <th scope="col" className="num">Capacity / day</th>
                 {canEdit ? (
                   <th scope="col">
@@ -199,6 +205,7 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
                   <td>{CATEGORY_LABEL[p.category]}</td>
                   <td className="num tabular-nums">{formatNumber(p.units_per_carton)}</td>
                   <td>{CARTON_TYPE_LABEL[p.carton_type]}</td>
+                  <td className="num tabular-nums">{p.weight_per_carton === null ? "-" : `${p.weight_per_carton} kg`}</td>
                   <td className="num tabular-nums">{p.daily_capacity === null ? "-" : formatNumber(p.daily_capacity)}</td>
                   {canEdit ? (
                     <td className="text-right">
@@ -211,7 +218,7 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
               ))}
               {shown.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 7 : 6} className="text-muted">
+                  <td colSpan={canEdit ? 8 : 7} className="text-muted">
                     No product matches.
                   </td>
                 </tr>

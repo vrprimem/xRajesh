@@ -2,7 +2,7 @@ import QRCode from "qrcode";
 import { formatNumber } from "@/lib/format";
 import { CARTON_TYPE_LABEL, code128Svg, plainSvg, type CartonType } from "@/lib/supplier";
 
-export type LabelCarton = { carton_type: CartonType; product: string; units: number; carton_no: number; barcode: string; label_svg?: string | null };
+export type LabelCarton = { carton_type: CartonType; product: string; units: number; carton_no: number; barcode: string; label_svg?: string | null; weight_per_carton?: number | null };
 
 // One label per page, 100 mm x 75 mm. The printer and label size at the supplier's warehouse are still to be
 // confirmed: change the label size (.vr-label) and the page size (@page) here once they are known.
@@ -53,7 +53,14 @@ export async function Label({ carton, dispatchNo, due }: { carton: LabelCarton; 
         </span>
       </div>
       <div className="vr-label-meta">
-        <span>To: VRPRIME</span>
+        <span>
+          To: VRPRIME{carton.weight_per_carton ? (
+            <>
+              {" · "}
+              <b>{carton.weight_per_carton} kg</b>
+            </>
+          ) : null}
+        </span>
         <span>{due}</span>
       </div>
       <div className="vr-label-codes">
