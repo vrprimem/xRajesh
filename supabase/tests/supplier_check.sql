@@ -489,7 +489,7 @@ begin
   reset role;
   update public.supplier_dispatches set due_on = (now() at time zone 'Asia/Kolkata')::date + 1 where id = d_b;
   n := private.supplier_dispatch_due();
-  assert n = 2, 'both open dispatches due tomorrow are told about (one of each supplier)';
+  assert n >= 2, 'both open dispatches due tomorrow are told about (one of each supplier; real ones may be due too)';
   assert (select count(*) from public.notifications where kind = 'supplier_due' and user_id = u_raj and title like '%due tomorrow') = 1, 'the supplier owner hears';
   assert (select count(*) from public.notifications where kind = 'supplier_due' and user_id = u_scan) = 1, 'the warehouse person hears';
   assert (select count(*) from public.notifications where kind = 'supplier_due' and user_id = u_oth) = 1, 'the other supplier hears only of its own';
