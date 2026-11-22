@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CsvButton } from "@/components/supplier/csv-button";
 import { Card, EmptyState, PageTitle, SectionHead, buttonClass } from "@/components/ui";
-import { formatDate, formatNumber, todayIST } from "@/lib/format";
+import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { buildReport, shiftMonth, toCsv } from "@/lib/report";
 import type { ReportData } from "@/server/supplier-data";
 
@@ -56,7 +56,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
               ))}
             </div>
             <p className="mt-3 text-[13px]">
-              <span className="font-semibold tabular-nums">{formatNumber(t.arrived)}</span> of {formatNumber(t.cartons)} cartons scanned in at VRPRIME
+              <span className="font-semibold tabular-nums">{formatNumber(t.arrived)}</span> of {formatNumber(t.cartons)} {noun(t.cartons, "carton")} scanned in at VRPRIME
               {t.cartons - t.arrived > 0 ? <span className="text-muted"> · {formatNumber(t.cartons - t.arrived)} not yet</span> : null}
             </p>
           </Card>

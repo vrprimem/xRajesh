@@ -7,7 +7,7 @@ import { ProduceList } from "@/components/supplier/produce-list";
 import { StockTable } from "@/components/supplier/stock-table";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
-import { formatDate, formatNumber, todayIST } from "@/lib/format";
+import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { CARTON_TYPE_LABEL, dispatchCounts } from "@/lib/supplier";
 import { loadDispatches, loadPlans, loadProduce, loadStock } from "@/server/supplier-data";
 
@@ -66,7 +66,7 @@ export default async function SupplierHome() {
               </p>
             </div>
             <p className="text-[13px]">
-              <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} cartons scanned · {CARTON_TYPE_LABEL.H} {formatNumber(counts.byType.H.loaded)}/{formatNumber(counts.byType.H.planned)} · {CARTON_TYPE_LABEL.T}{" "}
+              <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} {noun(counts.planned, "carton")} scanned · {CARTON_TYPE_LABEL.H} {formatNumber(counts.byType.H.loaded)}/{formatNumber(counts.byType.H.planned)} · {CARTON_TYPE_LABEL.T}{" "}
               {formatNumber(counts.byType.T.loaded)}/{formatNumber(counts.byType.T.planned)}
             </p>
             <div className="flex flex-wrap gap-2">

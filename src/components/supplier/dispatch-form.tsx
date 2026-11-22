@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Card, Field, buttonClass } from "@/components/ui";
-import { formatNumber } from "@/lib/format";
+import { formatNumber, noun } from "@/lib/format";
 import { CARTON_TYPE_LABEL, type CartonType } from "@/lib/supplier";
 import { createDispatch } from "@/server/actions/supplier";
 import type { ProductRow } from "@/server/supplier-data";
@@ -119,7 +119,7 @@ export function DispatchForm({ supplierId, products, base, tomorrow }: { supplie
                 </button>
                 {p && Number.isInteger(n) && n > 0 ? (
                   <p className="t-caption col-span-full">
-                    {formatNumber(n * p.units_per_carton)} units
+                    {formatNumber(n * p.units_per_carton)} {noun(n * p.units_per_carton, "unit")}
                     {p.weight_per_carton ? ` · ${formatNumber(Math.round(n * p.weight_per_carton))} kg` : " · no carton weight set"}
                   </p>
                 ) : null}
@@ -141,8 +141,8 @@ export function DispatchForm({ supplierId, products, base, tomorrow }: { supplie
         </div>
 
         <p className="text-[13px]">
-          Total: <span className="font-semibold tabular-nums">{formatNumber(totals.H + totals.T)}</span> cartons ({formatNumber(totals.H)} {CARTON_TYPE_LABEL.H}, {formatNumber(totals.T)} {CARTON_TYPE_LABEL.T}) ·{" "}
-          <span className="tabular-nums">{formatNumber(totals.units)}</span> units. One label is issued per carton.
+          Total: <span className="font-semibold tabular-nums">{formatNumber(totals.H + totals.T)}</span> {noun(totals.H + totals.T, "carton")} ({formatNumber(totals.H)} {CARTON_TYPE_LABEL.H}, {formatNumber(totals.T)} {CARTON_TYPE_LABEL.T}) ·{" "}
+          <span className="tabular-nums">{formatNumber(totals.units)}</span> {noun(totals.units, "unit")}. One label is issued per carton.
         </p>
         {problem ? <p className="t-caption font-semibold text-bad">{problem}</p> : null}
         <div className="flex gap-2">

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Chip, buttonClass } from "@/components/ui";
-import { formatDateTime, formatNumber } from "@/lib/format";
+import { formatDateTime, formatNumber, noun } from "@/lib/format";
 import { PRODUCE_STATUS_LABEL, type ProduceStatus } from "@/lib/supplier";
 import { respondProduce } from "@/server/actions/supplier";
 import type { ProduceRow } from "@/server/supplier-data";
@@ -37,7 +37,7 @@ export function ProduceList({ rows, canAnswer }: { rows: ProduceRow[]; canAnswer
             <Chip tone={r.status === "open" ? "bad" : r.status === "dispatched" ? "ok" : "info"}>{PRODUCE_STATUS_LABEL[r.status]}</Chip>
           </div>
           <p className="text-[13px]">
-            Make <span className="font-semibold tabular-nums">{formatNumber(r.suggested_units)}</span> units
+            Make <span className="font-semibold tabular-nums">{formatNumber(r.suggested_units)}</span> {noun(r.suggested_units, "unit")}
             <span className="text-muted">
               {" "}
               · {formatNumber(r.stock_units)} in stock + {formatNumber(r.in_transit_units)} on the way, minimum {formatNumber(r.min_units)}

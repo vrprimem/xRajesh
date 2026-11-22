@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Card, Chip, SectionHead, buttonClass } from "@/components/ui";
-import { formatDate, formatDateTime, formatNumber } from "@/lib/format";
+import { formatDate, formatDateTime, formatNumber, noun } from "@/lib/format";
 import { safeError } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/client";
 import { CARTON_TYPE_LABEL, DISPATCH_STATUS_LABEL, dispatchCounts, labelsOwed, pendingKey, readPending, type CartonType, type DispatchStatus } from "@/lib/supplier";
@@ -124,7 +124,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
           <TypeCounter type="T" {...counts.byType.T} />
         </div>
         <p className="mt-3 text-[13px]">
-          <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} cartons scanned · <span className="tabular-nums">{formatNumber(counts.units)}</span> units loaded
+          <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} {noun(counts.planned, "carton")} scanned · <span className="tabular-nums">{formatNumber(counts.units)}</span> {noun(counts.units, "unit")} loaded
           {counts.voided ? ` · ${formatNumber(counts.voided)} ${counts.voided === 1 ? "label" : "labels"} void` : ""}
           {!open && d.status !== "cancelled" && counts.loaded ? ` · ${formatNumber(arrived)} of ${formatNumber(counts.loaded)} scanned in at VRPRIME` : ""}
         </p>
@@ -204,7 +204,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
               {uploading ? "Uploading..." : d.vehicle_photo_path ? "Replace vehicle photo" : "Add vehicle photo"}
             </button>
             {counts.left > 0 && counts.loaded > 0 ? (
-              <button type="button" disabled={pending} onClick={() => run(() => voidUnusedLabels(d.id), `Void the ${counts.left} labels that were not scanned? Those cartons are not on this dispatch.`)} className={buttonClass("outline")}>
+              <button type="button" disabled={pending} onClick={() => run(() => voidUnusedLabels(d.id), counts.left === 1 ? "Void the 1 label that was not scanned? That carton is not on this dispatch." : `Void the ${counts.left} labels that were not scanned? Those cartons are not on this dispatch.`)} className={buttonClass("outline")}>
                 Void {formatNumber(counts.left)} unused {counts.left === 1 ? "label" : "labels"}
               </button>
             ) : null}

@@ -93,3 +93,8 @@ export function addDays(isoDay: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** The word for a count: noun(1, "carton") is "carton", noun(3, "carton") is "cartons". */
+export function noun(n: number, one: string, many = `${one}s`): string {
+  return n === 1 ? one : many;
+}

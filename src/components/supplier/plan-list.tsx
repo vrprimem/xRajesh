@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Chip, buttonClass } from "@/components/ui";
-import { formatDate, formatNumber, todayIST } from "@/lib/format";
+import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { CARTON_TYPE_LABEL, PLAN_STATUS_LABEL, type PlanStatus } from "@/lib/supplier";
 import { cancelPlan, planToDispatch, respondPlan } from "@/server/actions/supplier";
 import type { PlanRow } from "@/server/supplier-data";
@@ -59,15 +59,15 @@ export function PlanList({ plans, who, dispatchBase }: { plans: PlanRow[]; who: 
                       <span className="ml-1 font-normal text-muted">{CARTON_TYPE_LABEL[l.carton_type]}</span>
                     </th>
                     <td className="py-1.5 text-right tabular-nums">
-                      <b>{formatNumber(l.cartons)}</b> cartons
+                      <b>{formatNumber(l.cartons)}</b> {noun(l.cartons, "carton")}
                     </td>
-                    <td className="py-1.5 pl-3 text-right tabular-nums text-muted">{formatNumber(l.cartons * l.units_per_carton)} units</td>
+                    <td className="py-1.5 pl-3 text-right tabular-nums text-muted">{formatNumber(l.cartons * l.units_per_carton)} {noun(l.cartons * l.units_per_carton, "unit")}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <p className="t-caption mt-1">
-              {formatNumber(cartons)} cartons · {formatNumber(units)} units in all
+              {formatNumber(cartons)} {noun(cartons, "carton")} · {formatNumber(units)} {noun(units, "unit")} in all
             </p>
 
             <div className="mt-2 flex flex-wrap gap-2">
@@ -97,7 +97,7 @@ export function PlanList({ plans, who, dispatchBase }: { plans: PlanRow[]; who: 
                     type="button"
                     disabled={pending}
                     onClick={() => {
-                      if (!window.confirm(`Make a dispatch from send plan ${p.number}? Its ${cartons} labels are printed now, ready for loading.`)) return;
+                      if (!window.confirm(`Make a dispatch from send plan ${p.number}? ${cartons === 1 ? "Its label is" : `Its ${cartons} labels are`} printed now, ready for loading.`)) return;
                       startTransition(async () => {
                         const result = await planToDispatch(p.id);
                         if (toast.result(result) && result.ok && result.data) router.push(`${dispatchBase}/${result.data}`);

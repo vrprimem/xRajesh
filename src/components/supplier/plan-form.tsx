@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Card, Chip, Field, buttonClass } from "@/components/ui";
-import { formatNumber } from "@/lib/format";
+import { formatNumber, noun } from "@/lib/format";
 import { cartonsFor, suggestedUnits } from "@/lib/supplier";
 import { createPlan } from "@/server/actions/supplier";
 import type { StockRow } from "@/server/supplier-data";
@@ -142,8 +142,8 @@ export function PlanForm({ supplierId, supplierName, rows, defaultDue, back }: {
 
       <Card className="g-pad">
         <p className="text-[13px]">
-          <span className="font-semibold tabular-nums">{formatNumber(total.cartons)}</span> cartons of {chosen.length} {chosen.length === 1 ? "product" : "products"} ·{" "}
-          <span className="tabular-nums">{formatNumber(total.units)}</span> units
+          <span className="font-semibold tabular-nums">{formatNumber(total.cartons)}</span> {noun(total.cartons, "carton")} of {chosen.length} {chosen.length === 1 ? "product" : "products"} ·{" "}
+          <span className="tabular-nums">{formatNumber(total.units)}</span> {noun(total.units, "unit")}
         </p>
         {problem ? <p className="t-caption mt-1 font-semibold text-bad">{problem}</p> : null}
         <div className="mt-3 flex flex-wrap gap-2">

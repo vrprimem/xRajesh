@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { DispatchStatusChip } from "@/components/supplier/dispatch-panel";
 import { Card, EmptyState } from "@/components/ui";
-import { formatDate, formatNumber, todayIST } from "@/lib/format";
+import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { CARTON_TYPE_LABEL, dispatchCounts } from "@/lib/supplier";
 import type { DispatchSummary } from "@/server/supplier-data";
 
@@ -20,10 +20,10 @@ export function MonthCartons({ dispatches }: { dispatches: DispatchSummary[] }) 
     <Card className="g-pad">
       <p className="t-card-title">Cartons sent this month</p>
       <p className="mt-2 text-[13px]">
-        <span className="text-[22px] font-semibold tabular-nums">{formatNumber(total.H + total.T)}</span> cartons in {sent.length} {sent.length === 1 ? "dispatch" : "dispatches"}
+        <span className="text-[22px] font-semibold tabular-nums">{formatNumber(total.H + total.T)}</span> {noun(total.H + total.T, "carton")} in {sent.length} {sent.length === 1 ? "dispatch" : "dispatches"}
       </p>
       <p className="t-caption mt-1">
-        {CARTON_TYPE_LABEL.H} {formatNumber(total.H)} · {CARTON_TYPE_LABEL.T} {formatNumber(total.T)} · {formatNumber(total.units)} units
+        {CARTON_TYPE_LABEL.H} {formatNumber(total.H)} · {CARTON_TYPE_LABEL.T} {formatNumber(total.T)} · {formatNumber(total.units)} {noun(total.units, "unit")}
       </p>
     </Card>
   );
