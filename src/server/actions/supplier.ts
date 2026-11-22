@@ -405,3 +405,60 @@ export async function setStaffLoginActive(userId: unknown, active: unknown): Pro
   refresh();
   return { ok: true, message: active ? "Login switched on" : "Login switched off" };
 }
+
+// ---- Send plans: VRPRIME says what to send next ---------------------------------------------------------------------------
+
+const planSchema = z.object({
+  due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
+  note: z.string().trim().max(500).optional().default(""),
+  lines: z.array(z.object({ product_id: UUID, cartons: z.number().int().min(1).max(5000) })).min(1, "Add cartons for at least one product").max(500),
+});
+
+/** A send plan for a supplier. VRPRIME owner and admin; the supplier's owners are told. */
+export async function createPlan(supplierId: unknown, input: unknown): Promise<ActionResult<string>> {
+  const denied = await staff();
+  if (denied) return denied;
+  const supplier = id(supplierId);
+  if (!supplier) return NOT_ALLOWED;
+  const parsed = planSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Check the plan: a date, and whole cartons for at least one product." };
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_plan_create", { p_supplier: supplier, p_due: parsed.data.due, p_note: parsed.data.note, p_lines: parsed.data.lines });
+  if (error) return failed(error, "send the plan");
+  refresh();
+  return { ok: true, message: "Send plan made. Rajesh has been told.", data: data as string };
+}
+
+/** The supplier's answer to a send plan. */
+export async function respondPlan(planId: unknown, status: unknown): Promise<ActionResult> {
+  const plan = id(planId);
+  if (!plan || (status !== "accepted" && status !== "in_production" && status !== "ready")) return NOT_ALLOWED;
+  return step("supplier_plan_respond", { p_plan: plan, p_status: status }, "save your answer", "Answer saved. VRPRIME has been told.", true);
+}
+
+/** VRPRIME cancels a plan that has not become a dispatch. */
+export async function cancelPlan(planId: unknown): Promise<ActionResult> {
+  const denied = await staff();
+  if (denied) return denied;
+  const plan = id(planId);
+  if (!plan) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { error } = await db.rpc("supplier_plan_cancel", { p_plan: plan });
+  if (error) return failed(error, "cancel the plan");
+  refresh();
+  return { ok: true, message: "Plan cancelled. Rajesh has been told." };
+}
+
+/** Turns a send plan into a dispatch with exactly its lines; its labels are then printed. Returns the dispatch's id. */
+export async function planToDispatch(planId: unknown): Promise<ActionResult<string>> {
+  const who = await actor();
+  if (!who) return NOT_SIGNED_IN;
+  if (who.scanner) return NOT_ALLOWED;
+  const plan = id(planId);
+  if (!plan) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_plan_to_dispatch", { p_plan: plan });
+  if (error) return failed(error, "make the dispatch");
+  refresh();
+  return { ok: true, message: "Dispatch made. Its labels are being printed.", data: data as string };
+}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DispatchList, MonthCartons } from "@/components/supplier/dispatch-list";
+import { PlanList } from "@/components/supplier/plan-list";
 import { ProduceList } from "@/components/supplier/produce-list";
 import { StockTable } from "@/components/supplier/stock-table";
 import { EditSupplier, SupplierLogins, type SupplierLogin } from "@/components/supplier/supplier-admin";
@@ -10,7 +11,7 @@ import { canManage, isOwner, requireUser } from "@/lib/auth";
 import { getAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { SUPPLIER_ROLES } from "@/lib/types";
-import { loadDispatches, loadProduce, loadStock, loadSupplier, loadWarehouses } from "@/server/supplier-data";
+import { loadDispatches, loadPlans, loadProduce, loadStock, loadSupplier, loadWarehouses } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "Supplier" };
 
@@ -26,7 +27,8 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
   if (!supplier) notFound();
 
   const supabase = await createClient();
-  const [stock, produce, dispatches, warehouses, logins] = await Promise.all([
+  const [plans, stock, produce, dispatches, warehouses, logins] = await Promise.all([
+    loadPlans(id, false, 15),
     loadStock(id),
     loadProduce(id),
     loadDispatches(id),
@@ -67,12 +69,28 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
             <Link href={`${base}/products`} className={buttonClass("outline")}>
               Products
             </Link>
-            <Link href={`${base}/dispatches/new`} className={buttonClass("primary")}>
+            <Link href={`${base}/dispatches/new`} className={buttonClass("outline")}>
               New dispatch
+            </Link>
+            <Link href={`${base}/plans/new`} className={buttonClass("primary")}>
+              New send plan
             </Link>
           </>
         }
       />
+
+      <Card className="g-pad">
+        <SectionHead
+          title="Send plans"
+          sub={`What you have asked ${supplier.name} to send next, and the answers.`}
+          action={
+            <Link href={`${base}/plans/new`} className={buttonClass("row")}>
+              New send plan
+            </Link>
+          }
+        />
+        {plans.length ? <PlanList plans={plans} who="vrprime" dispatchBase={`${base}/dispatches`} /> : <p className="t-caption">No send plan yet. Make one to tell the supplier exactly what to send next, in whole cartons.</p>}
+      </Card>
 
       <Card className="g-pad">
         <SectionHead title="Produce now" sub="What the supplier has been asked to make, and its answer." />

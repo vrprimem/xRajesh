@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addPending,
+  cartonsFor,
   cleanBarcode,
   code128Svg,
   code128Values,
@@ -160,6 +161,15 @@ test("the waiting list: one entry per carton, answered scans leave, bad storage 
   assert.deepEqual(readPending('{"barcode":"x"}'), []);
   assert.deepEqual(readPending('[{"barcode":1},{"barcode":"9","at":"t"}]'), [{ barcode: "9", at: "t" }]);
   assert.deepEqual(readPending(null), []);
+});
+
+test("a send plan rounds units up to whole cartons", () => {
+  assert.equal(cartonsFor(1000, 24), 42);
+  assert.equal(cartonsFor(960, 24), 40);
+  assert.equal(cartonsFor(1, 110), 1);
+  assert.equal(cartonsFor(0, 24), 0);
+  assert.equal(cartonsFor(-5, 24), 0);
+  assert.equal(cartonsFor(100, 0), 0);
 });
 
 test("suggested quantity: up to twice the minimum, in full cartons", () => {

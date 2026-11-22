@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { DispatchList, MonthCartons } from "@/components/supplier/dispatch-list";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
 import { Label, LABEL_CSS } from "@/components/supplier/label";
+import { PlanForm } from "@/components/supplier/plan-form";
+import { PlanList } from "@/components/supplier/plan-list";
 import { ProduceList } from "@/components/supplier/produce-list";
 import { ProductsPanel } from "@/components/supplier/products-panel";
 import { Scanner } from "@/components/supplier/scanner";
@@ -11,7 +13,7 @@ import { StaffLogins } from "@/components/supplier/supplier-admin";
 import { SyncCard } from "@/components/supplier/sync-card";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import type { CartonType } from "@/lib/supplier";
-import type { CartonRow, DispatchDetail, DispatchSummary, ProduceRow, ProductRow, StockRow } from "@/server/supplier-data";
+import type { CartonRow, DispatchDetail, DispatchSummary, PlanRow, ProduceRow, ProductRow, StockRow } from "@/server/supplier-data";
 
 // The supplier portal's screens with fake data and no login, for checking layout at 360px, in dark mode and in print.
 // Development only: 404 in production. Buttons that save will fail here (there is no database behind them).
@@ -73,7 +75,17 @@ const PRODUCE: ProduceRow[] = [
   { id: "q2", product_id: pid(2), product: "Glass Cleaner 500ml", status: "in_production", stock_units: 40, in_transit_units: 0, min_units: 300, suggested_units: 576, raised_at: "2026-11-21T06:20:00Z", responded_at: "2026-11-21T08:00:00Z" },
 ];
 
-const VIEWS = ["home", "dispatch", "scan", "labels", "products", "vrprime"] as const;
+const PLANS: PlanRow[] = [
+  { id: "p2", number: 2, due_on: "2026-11-26", note: "Kitchen cleaner first, Flipkart sale on 28th", status: "open", dispatch_id: null, created_at: "2026-11-23T06:00:00Z", responded_at: null, lines: [
+    { product_id: pid(1), product: PRODUCTS[0].name, carton_type: "H", units_per_carton: 24, cartons: 40 },
+    { product_id: pid(2), product: PRODUCTS[1].name, carton_type: "T", units_per_carton: 48, cartons: 15 },
+  ] },
+  { id: "p1", number: 1, due_on: "2026-11-21", note: null, status: "in_production", dispatch_id: null, created_at: "2026-11-18T06:00:00Z", responded_at: "2026-11-18T09:00:00Z", lines: [
+    { product_id: pid(1), product: PRODUCTS[0].name, carton_type: "H", units_per_carton: 24, cartons: 25 },
+  ] },
+];
+
+const VIEWS = ["home", "dispatch", "scan", "labels", "products", "vrprime", "plan"] as const;
 
 export default async function SupplierPreviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (process.env.NODE_ENV !== "development") notFound();
@@ -93,7 +105,11 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
 
       {view === "home" ? (
         <div className="flex flex-col gap-4">
-          <PageTitle title="Today" sub="1 product needs an answer" />
+          <PageTitle title="Today" sub="2 things need your answer" />
+          <Card className="g-pad">
+            <SectionHead title="What VRPRIME wants next" sub="Make these, tell VRPRIME how far you are, and make the dispatch when ready." />
+            <PlanList plans={PLANS} who="owner" dispatchBase="/dev/supplier" />
+          </Card>
           <Card className="g-pad">
             <SectionHead title="Produce now" sub="Products under their minimum at VRPRIME, counting what is already on the way." />
             <ProduceList rows={PRODUCE} canAnswer />
@@ -130,6 +146,13 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
         <>
           <PageTitle title="Products" sub="3 active" />
           <ProductsPanel supplierId={SUPPLIER} products={PRODUCTS} canEdit={who === "owner"} />
+        </>
+      ) : null}
+
+      {view === "plan" ? (
+        <>
+          <PageTitle title="Rajesh Industries: new send plan" sub="Tell the supplier what to make and send next" />
+          <PlanForm supplierId={SUPPLIER} supplierName="Rajesh Industries" rows={STOCK} defaultDue="2026-11-26" back="/dev/supplier" />
         </>
       ) : null}
 

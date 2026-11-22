@@ -33,6 +33,9 @@ declare
   cb public.supplier_cartons;
   q uuid;
   dd uuid;
+  pl uuid;
+  pl2 uuid;
+  dp uuid;
   res jsonb;
   lab jsonb;
   n int;
@@ -481,6 +484,90 @@ begin
   update public.inventory_stock set pieces = 500 where code = 'SPCHK-1' and warehouse_id = w_main;
   perform private.supplier_produce_check();
   assert (select status from public.supplier_produce_requests where id = q) = 'cleared', 'stock back above the minimum clears the request';
+
+  -- Send plans: VRPRIME says what to send next; the supplier answers and turns it into a dispatch.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  pl := public.supplier_plan_create(s_a, (now() at time zone 'Asia/Kolkata')::date + 3, 'week 48',
+    jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 4), jsonb_build_object('product_id', p_a, 'cartons', 2)));
+  assert (select count(*) from public.supplier_send_plan_lines where plan_id = pl) = 1, 'the same product twice is one line';
+  assert (select cartons from public.supplier_send_plan_lines where plan_id = pl) = 6 and (select units_per_carton from public.supplier_send_plan_lines where plan_id = pl) = 20, 'cartons add up; units per carton from the product';
+  assert (select number from public.supplier_send_plans where id = pl) = 1, 'the first plan is number 1';
+  blocked := false;
+  begin
+    perform public.supplier_plan_create(s_a, current_date - 3, null, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a plan cannot be due in the past';
+  reset role;
+  assert (select count(*) from public.notifications where kind = 'supplier_plan' and user_id = u_raj) = 1, 'the supplier owner is told of the plan';
+  assert (select count(*) from public.notifications where kind = 'supplier_plan' and user_id in (u_scan, u_oth, u_off)) = 0, 'nobody else is';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  blocked := false;
+  begin
+    perform public.supplier_plan_create(s_a, current_date + 3, null, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'only VRPRIME makes a send plan';
+  select count(*) into n from public.supplier_send_plan_lines where plan_id = pl;
+  assert n = 1, 'the supplier reads its plan''s lines';
+  perform public.supplier_plan_respond(pl, 'accepted');
+  assert (select status from public.supplier_send_plans where id = pl) = 'accepted', 'the supplier accepts';
+  blocked := false;
+  begin
+    perform public.supplier_plan_respond(pl, 'shipped');
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'an unknown answer is refused';
+  blocked := false;
+  begin
+    perform public.supplier_plan_cancel(pl);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'only VRPRIME cancels a plan';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_plan_respond(pl, 'ready');
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person does not answer plans';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.supplier_send_plans;
+  assert n = 0, 'another supplier sees none of these plans';
+  blocked := false;
+  begin
+    perform public.supplier_plan_to_dispatch(pl);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot turn it into a dispatch';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  dp := public.supplier_plan_to_dispatch(pl);
+  assert (select status from public.supplier_send_plans where id = pl) = 'dispatched' and (select dispatch_id from public.supplier_send_plans where id = pl) = dp, 'the plan becomes a dispatch';
+  assert (select cartons from public.supplier_dispatch_lines where dispatch_id = dp and product_id = p_a) = 6, 'with exactly the plan''s cartons';
+  assert (select note from public.supplier_dispatches where id = dp) like 'From VRPRIME send plan 1%', 'and says where it came from';
+  blocked := false;
+  begin
+    perform public.supplier_plan_to_dispatch(pl);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a plan becomes a dispatch once';
+  reset role;
+  assert (select count(*) from public.notifications where kind = 'supplier_plan_answer' and user_id = u_adm) = 2, 'VRPRIME hears the answer and the dispatch';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  pl2 := public.supplier_plan_create(s_a, (now() at time zone 'Asia/Kolkata')::date + 5, null, jsonb_build_array(jsonb_build_object('product_id', p_a2, 'cartons', 3)));
+  assert (select number from public.supplier_send_plans where id = pl2) = 2, 'the next plan is number 2';
+  perform public.supplier_plan_cancel(pl2);
+  assert (select status from public.supplier_send_plans where id = pl2) = 'cancelled', 'VRPRIME cancels a plan';
+  reset role;
+  assert (select count(*) from public.notifications where kind = 'supplier_plan' and user_id = u_raj and title like '%cancelled%') = 1, 'and the supplier is told';
 
   -- Dispatch due: the supplier's owner and warehouse person hear about an open dispatch due tomorrow, once a day.
   perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);

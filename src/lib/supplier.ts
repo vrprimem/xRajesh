@@ -298,6 +298,22 @@ export function readPending(stored: string | null): PendingScan[] {
 
 // ---- Produce now -----------------------------------------------------------------------------------------------------------
 
+export type PlanStatus = "open" | "accepted" | "in_production" | "ready" | "dispatched" | "cancelled";
+export const PLAN_STATUS_LABEL: Record<PlanStatus, string> = {
+  open: "New: no answer yet",
+  accepted: "Accepted",
+  in_production: "In production",
+  ready: "Ready to send",
+  dispatched: "Dispatch made",
+  cancelled: "Cancelled",
+};
+
+/** Units rounded up to full cartons: the send plan always asks for whole cartons. 0 or less is no cartons. */
+export function cartonsFor(units: number, unitsPerCarton: number): number {
+  if (!(units > 0) || !(unitsPerCarton > 0)) return 0;
+  return Math.ceil(units / unitsPerCarton);
+}
+
 /** Units to make: enough to bring stock + in transit up to twice the minimum, in full cartons. The database's rule. */
 export function suggestedUnits(stock: number, inTransit: number, minUnits: number, unitsPerCarton: number): number {
   const short = 2 * minUnits - stock - inTransit;

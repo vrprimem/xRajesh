@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DispatchStatusChip } from "@/components/supplier/dispatch-panel";
 import { MonthCartons } from "@/components/supplier/dispatch-list";
+import { PlanList } from "@/components/supplier/plan-list";
 import { ProduceList } from "@/components/supplier/produce-list";
 import { StockTable } from "@/components/supplier/stock-table";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
 import { formatDate, formatNumber, todayIST } from "@/lib/format";
 import { CARTON_TYPE_LABEL, dispatchCounts } from "@/lib/supplier";
-import { loadDispatches, loadProduce, loadStock } from "@/server/supplier-data";
+import { loadDispatches, loadPlans, loadProduce, loadStock } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "Supplier portal" };
 
@@ -19,16 +20,22 @@ export const metadata: Metadata = { title: "Supplier portal" };
 export default async function SupplierHome() {
   const user = await requirePortalUser();
   const owner = user.role === "supplier_owner";
-  const [produce, dispatches, stock] = await Promise.all([owner ? loadProduce(user.supplierId) : [], loadDispatches(user.supplierId), owner ? loadStock(user.supplierId) : []]);
+  const [plans, produce, dispatches, stock] = await Promise.all([
+    loadPlans(user.supplierId, true),owner ? loadProduce(user.supplierId) : [], loadDispatches(user.supplierId), owner ? loadStock(user.supplierId) : []]);
   const today = todayIST();
   const open = dispatches.filter((d) => d.status === "planned" || d.status === "loading").sort((a, b) => a.due_on.localeCompare(b.due_on));
   const next = open[0] ?? null;
   const counts = next ? dispatchCounts(next.lines, next.cartons) : null;
-  const waiting = produce.filter((p) => p.status === "open").length;
+  const waiting = produce.filter((p) => p.status === "open").length + plans.filter((p) => p.status === "open").length;
 
   return (
     <div className="flex flex-col gap-4">
-      <PageTitle title={owner ? "Today" : "Dispatches"} sub={owner ? (waiting ? `${waiting} ${waiting === 1 ? "product needs" : "products need"} an answer` : "Nothing is waiting for an answer") : "Scan every carton as it is loaded"} />
+      <PageTitle title={owner ? "Today" : "Dispatches"} sub={owner ? (waiting ? `${waiting} ${waiting === 1 ? "thing needs" : "things need"} your answer` : "Nothing is waiting for an answer") : "Scan every carton as it is loaded"} />
+
+      <Card className="g-pad">
+        <SectionHead title="What VRPRIME wants next" sub={owner ? "Make these, tell VRPRIME how far you are, and make the dispatch when ready." : "What VRPRIME has asked for next."} />
+        {plans.length ? <PlanList plans={plans} who={owner ? "owner" : "scanner"} dispatchBase="/supplier/dispatches" /> : <p className="t-caption">No send plan from VRPRIME right now. You are told here, and by a notification, as soon as there is one.</p>}
+      </Card>
 
       {owner ? (
         <Card className="g-pad">

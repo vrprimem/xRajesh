@@ -149,6 +149,42 @@ export async function loadReport(supplierId: string, from: string, to: string): 
   };
 }
 
+export type PlanLine = { product_id: string; product: string; carton_type: "H" | "T"; units_per_carton: number; cartons: number };
+export type PlanRow = {
+  id: string;
+  number: number;
+  due_on: string;
+  note: string | null;
+  status: import("@/lib/supplier").PlanStatus;
+  dispatch_id: string | null;
+  created_at: string;
+  responded_at: string | null;
+  lines: PlanLine[];
+};
+
+/** Send plans, newest first. `openOnly`: only those not yet made into a dispatch or cancelled. */
+export async function loadPlans(supplierId: string, openOnly: boolean, limit = 30): Promise<PlanRow[]> {
+  const db = await supplierDb();
+  let q = db.from("supplier_send_plans").select("id, number, due_on, note, status, dispatch_id, created_at, responded_at").eq("supplier_id", supplierId);
+  if (openOnly) q = q.in("status", ["open", "accepted", "in_production", "ready"]);
+  const { data, error } = await q.order(openOnly ? "due_on" : "number", { ascending: openOnly }).limit(limit);
+  const plans = soft("send plans", error, data as Omit<PlanRow, "lines">[] | null, []);
+  if (!plans.length) return [];
+  const [lines, products] = await Promise.all([
+    db.from("supplier_send_plan_lines").select("plan_id, product_id, carton_type, units_per_carton, cartons").in("plan_id", plans.map((p) => p.id)).limit(10000),
+    db.from("supplier_products").select("id, name").eq("supplier_id", supplierId).limit(5000),
+  ]);
+  const names = new Map<string, string>(((products.data ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name]));
+  const rows = soft("send plan lines", lines.error, lines.data as (Omit<PlanLine, "product"> & { plan_id: string })[] | null, []);
+  return plans.map((p) => ({
+    ...p,
+    lines: rows
+      .filter((l) => l.plan_id === p.id)
+      .map(({ plan_id: _plan, ...l }) => ({ ...l, product: names.get(l.product_id) ?? "Unknown product" })) // eslint-disable-line @typescript-eslint/no-unused-vars
+      .sort((a, b) => a.product.localeCompare(b.product)),
+  }));
+}
+
 export async function loadSupplier(id: string): Promise<Supplier | null> {
   const db = await supplierDb();
   const { data } = await db.from("suppliers").select("id, name, warehouse_id, active").eq("id", id).maybeSingle();
