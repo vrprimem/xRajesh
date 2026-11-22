@@ -1,0 +1,361 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { canManage, getActiveUser, getPortalUser } from "@/lib/auth";
+import { logError, redactSecrets } from "@/lib/redact";
+import { adminErrorMessage, getAdmin } from "@/lib/supabase/admin";
+import { MAX_PRODUCT_ROWS, PRODUCT_CATEGORIES, isCartonBarcode, type ProductInput, type ScanAnswer } from "@/lib/supplier";
+import { SUPPLIER_ROLES, type ActionResult } from "@/lib/types";
+import { fieldErrors } from "@/lib/validation";
+import { NOT_SIGNED_IN } from "@/server/action-helpers";
+import { supplierDb } from "@/server/supplier-data";
+
+// The supplier portal's actions. Two kinds of people call them: a supplier login (its own supplier only) and VRPRIME's
+// owner and admin (any supplier). Each action works out who is calling here, and every database function checks again.
+
+const UUID = z.uuid();
+
+type Actor = { supplierOnly: string | null; isOwner: boolean; scanner: boolean };
+
+/** Who is calling. `supplierOnly` is the one supplier a supplier login may touch; null for VRPRIME owner and admin. */
+async function actor(): Promise<Actor | null> {
+  const portal = await getPortalUser();
+  if (portal) return { supplierOnly: portal.supplierId, isOwner: false, scanner: portal.role === "supplier_scanner" };
+  const user = await getActiveUser();
+  if (user && canManage(user)) return { supplierOnly: null, isOwner: user.role === "owner", scanner: false };
+  return null;
+}
+
+/** The supplier an action is about: a supplier login always gets its own, whatever was sent. */
+function supplierFor(who: Actor, sent: unknown): string | null {
+  if (who.supplierOnly) return who.supplierOnly;
+  return UUID.safeParse(sent).success ? (sent as string) : null;
+}
+
+const NOT_ALLOWED: ActionResult<never> = { ok: false, message: "You do not have access to do that." };
+
+/** A database refusal as a message. The functions raise plain sentences (code 22023) that are safe to show. */
+function failed(error: { message: string; code?: string }, what: string): ActionResult<never> {
+  if (error.code === "PGRST202" || error.code === "42883") return { ok: false, message: "The database is not set up yet (see SETUP.md)." };
+  if (error.code === "42501") return NOT_ALLOWED;
+  if (error.code === "22023") {
+    const text = redactSecrets(error.message);
+    return { ok: false, message: text.charAt(0).toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? "" : ".") };
+  }
+  logError(`supplier ${what}`, error);
+  return { ok: false, message: `Could not ${what}. Check your connection and try again.` };
+}
+
+function refresh() {
+  revalidatePath("/", "layout");
+}
+
+// ---- Products ------------------------------------------------------------------------------------------------------------
+
+const productSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  master_code: z.string().trim().max(200).nullable(),
+  category: z.enum(PRODUCT_CATEGORIES),
+  units_per_carton: z.number().int().min(1).max(100000),
+  carton_type: z.enum(["H", "T"]),
+  daily_capacity: z.number().int().min(0).max(10000000).nullable(),
+  active: z.boolean(),
+});
+
+/** Adds or updates products by name: one from the form, or many from the sheet. Never removes any. */
+export async function saveProducts(supplierId: unknown, rows: unknown): Promise<ActionResult> {
+  const who = await actor();
+  if (!who) return NOT_SIGNED_IN;
+  if (who.scanner) return NOT_ALLOWED;
+  const supplier = supplierFor(who, supplierId);
+  if (!supplier) return NOT_ALLOWED;
+  const parsed = z.array(productSchema).min(1).max(MAX_PRODUCT_ROWS).safeParse(rows);
+  if (!parsed.success) return { ok: false, message: "Check the product: it needs a name and units per carton (a whole number from 1)." };
+  const list: ProductInput[] = parsed.data;
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_products_save", { p_supplier: supplier, p_rows: list });
+  if (error) return failed(error, "save the products");
+  refresh();
+  const added = Number(data?.added ?? 0);
+  const changed = Number(data?.changed ?? 0);
+  return { ok: true, message: list.length === 1 ? (added ? `${list[0].name} added` : `${list[0].name} saved`) : `${added} added, ${changed} updated` };
+}
+
+// ---- Dispatches -----------------------------------------------------------------------------------------------------------
+
+const dispatchSchema = z.object({
+  due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
+  note: z.string().trim().max(500).optional().default(""),
+  lines: z
+    .array(z.object({ product_id: UUID, cartons: z.number().int().min(1, "At least 1 carton").max(5000), carton_type: z.enum(["H", "T"]).optional(), units_per_carton: z.number().int().min(1).max(100000).optional() }))
+    .min(1, "Add at least one product")
+    .max(200),
+});
+
+/** Creates a dispatch plan and issues one label per carton. Returns the new dispatch's id. */
+export async function createDispatch(supplierId: unknown, input: unknown): Promise<ActionResult<string>> {
+  const who = await actor();
+  if (!who) return NOT_SIGNED_IN;
+  if (who.scanner) return NOT_ALLOWED;
+  const supplier = supplierFor(who, supplierId);
+  if (!supplier) return NOT_ALLOWED;
+  const parsed = dispatchSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Check the plan: a date, and at least one product with cartons.", fieldErrors: fieldErrors(parsed.error) };
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_dispatch_create", { p_supplier: supplier, p_due: parsed.data.due, p_note: parsed.data.note, p_lines: parsed.data.lines });
+  if (error) return failed(error, "create the dispatch");
+  refresh();
+  return { ok: true, message: "Dispatch created. Its labels are ready to print.", data: data as string };
+}
+
+/**
+ * Saves scans from the loading screen: [{ barcode, at }]. Safe to send again after a lost connection. Answers one
+ * result per scan. Not revalidated: the loading screen keeps its own count while it scans.
+ */
+export async function scanCartons(dispatchId: unknown, scans: unknown): Promise<ActionResult<ScanAnswer[]>> {
+  const who = await actor();
+  if (!who) return NOT_SIGNED_IN;
+  if (!UUID.safeParse(dispatchId).success) return NOT_ALLOWED;
+  const parsed = z.array(z.object({ barcode: z.string().refine(isCartonBarcode), at: z.iso.datetime({ offset: true }) })).max(500).safeParse(scans);
+  if (!parsed.success) return { ok: false, message: "Those scans were not understood." };
+  if (!parsed.data.length) return { ok: true, message: "Nothing to save", data: [] };
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_scan", { p_dispatch: dispatchId, p_scans: parsed.data });
+  if (error) return failed(error, "save the scans");
+  return { ok: true, message: "Saved", data: (data ?? []) as ScanAnswer[] };
+}
+
+/** One of the plain dispatch and label steps: each is a database function that takes the id and checks everything itself. */
+async function step(fn: string, args: Record<string, unknown>, what: string, done: string, ownerOnly = false): Promise<ActionResult> {
+  const who = await actor();
+  if (!who) return NOT_SIGNED_IN;
+  if (ownerOnly && who.scanner) return NOT_ALLOWED;
+  if (Object.values(args).some((v) => typeof v === "string" && v.length > 400)) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { error } = await db.rpc(fn, args);
+  if (error) return failed(error, what);
+  refresh();
+  return { ok: true, message: done };
+}
+
+const id = (v: unknown): string | null => (UUID.safeParse(v).success ? (v as string) : null);
+
+export async function voidCarton(cartonId: unknown, reason: unknown): Promise<ActionResult> {
+  const carton = id(cartonId);
+  if (!carton) return NOT_ALLOWED;
+  return step("supplier_carton_void", { p_carton: carton, p_reason: typeof reason === "string" ? reason.slice(0, 200) : "" }, "void the label", "Label voided");
+}
+
+/** Voids a damaged label and issues a new one for the same carton. Returns the new label’s id, to print it. */
+export async function reprintCarton(cartonId: unknown): Promise<ActionResult<string>> {
+  const who = await actor();
+  if (!who) return NOT_SIGNED_IN;
+  const carton = id(cartonId);
+  if (!carton) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_carton_reprint", { p_carton: carton });
+  if (error) return failed(error, "reprint the label");
+  refresh();
+  return { ok: true, message: "Old label voided. Print the new one.", data: data as string };
+}
+
+export async function voidUnusedLabels(dispatchId: unknown): Promise<ActionResult> {
+  const dispatch = id(dispatchId);
+  if (!dispatch) return NOT_ALLOWED;
+  return step("supplier_dispatch_void_unused", { p_dispatch: dispatch }, "void the unused labels", "Unused labels voided");
+}
+
+/** Attaches the vehicle photo already uploaded to "<supplier>/<dispatch>/<uuid>.jpg". The database checks the path. */
+export async function setDispatchPhoto(dispatchId: unknown, path: unknown): Promise<ActionResult> {
+  const dispatch = id(dispatchId);
+  if (!dispatch || typeof path !== "string") return NOT_ALLOWED;
+  return step("supplier_dispatch_set_photo", { p_dispatch: dispatch, p_path: path }, "attach the photo", "Photo attached");
+}
+
+export async function closeDispatch(dispatchId: unknown): Promise<ActionResult> {
+  const dispatch = id(dispatchId);
+  if (!dispatch) return NOT_ALLOWED;
+  return step("supplier_dispatch_close", { p_dispatch: dispatch }, "close the dispatch", "Dispatch closed and locked");
+}
+
+export async function cancelDispatch(dispatchId: unknown): Promise<ActionResult> {
+  const dispatch = id(dispatchId);
+  if (!dispatch) return NOT_ALLOWED;
+  return step("supplier_dispatch_cancel", { p_dispatch: dispatch }, "cancel the dispatch", "Dispatch cancelled", true);
+}
+
+/** The supplier's answer to a "Produce now" request. */
+export async function respondProduce(requestId: unknown, status: unknown): Promise<ActionResult> {
+  const request = id(requestId);
+  if (!request || (status !== "accepted" && status !== "in_production" && status !== "dispatched")) return NOT_ALLOWED;
+  return step("supplier_produce_respond", { p_request: request, p_status: status }, "save your answer", "Answer saved", true);
+}
+
+// ---- VRPRIME's side (owner and admin; the database refuses a supplier login) -----------------------------------------------
+
+async function staff(ownerOnly = false): Promise<ActionResult<never> | null> {
+  const user = await getActiveUser();
+  if (!user) return NOT_SIGNED_IN;
+  if (!canManage(user) || (ownerOnly && user.role !== "owner")) return { ok: false, message: ownerOnly ? "Only the owner can do that." : "Only the owner or an admin can do that." };
+  return null;
+}
+
+/** Sets a product's minimum stock at VRPRIME, or removes it (an empty value). */
+export async function setThreshold(productId: unknown, min: unknown): Promise<ActionResult> {
+  const denied = await staff();
+  if (denied) return denied;
+  const product = id(productId);
+  if (!product) return NOT_ALLOWED;
+  if (min !== null && !(typeof min === "number" && Number.isInteger(min) && min >= 1 && min <= 100000000)) return { ok: false, message: "The minimum must be a whole number from 1, or empty for none." };
+  const db = await supplierDb();
+  const { error } = await db.rpc("supplier_threshold_set", { p_product: product, p_min: min });
+  if (error) return failed(error, "save the minimum");
+  refresh();
+  return { ok: true, message: min === null ? "Minimum removed" : "Minimum saved" };
+}
+
+/** The "Sync now" button: reads the stock from the inventory software again. */
+export async function requestStockSync(): Promise<ActionResult> {
+  const denied = await staff();
+  if (denied) return denied;
+  const db = await supplierDb();
+  const { error } = await db.rpc("request_inventory_sync");
+  if (error) return failed(error, "start the sync");
+  refresh();
+  return { ok: true, message: "Reading the stock. This takes a few seconds." };
+}
+
+/** Marks a closed dispatch as received at VRPRIME, so its units stop counting as in transit. */
+export async function receiveDispatch(dispatchId: unknown): Promise<ActionResult> {
+  const denied = await staff();
+  if (denied) return denied;
+  const dispatch = id(dispatchId);
+  if (!dispatch) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { error } = await db.rpc("supplier_dispatch_receive", { p_dispatch: dispatch });
+  if (error) return failed(error, "mark it received");
+  refresh();
+  return { ok: true, message: "Marked as received" };
+}
+
+const supplierSchema = z.object({ name: z.string().trim().min(1, "Enter a name").max(120), warehouseId: UUID });
+
+/** Adds a supplier. Owner only; saved with the service key, as Manage users does. */
+export async function createSupplier(input: unknown): Promise<ActionResult> {
+  const denied = await staff(true);
+  if (denied) return denied;
+  const parsed = supplierSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Enter a name and pick the warehouse that receives the goods.", fieldErrors: fieldErrors(parsed.error) };
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return { ok: false, message: problem };
+  const { error } = await admin.from("suppliers").insert({ name: parsed.data.name, warehouse_id: parsed.data.warehouseId });
+  if (error) {
+    if (error.code === "23505") return { ok: false, message: "A supplier with this name already exists.", fieldErrors: { name: "Already in use" } };
+    return failed(error, "add the supplier");
+  }
+  refresh();
+  return { ok: true, message: `${parsed.data.name} added` };
+}
+
+const loginSchema = z.object({
+  supplierId: UUID,
+  name: z.string().trim().min(1, "Enter a name").max(80),
+  email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email")),
+  role: z.enum(SUPPLIER_ROLES),
+  password: z.string().min(8, "Use at least 8 characters").max(72, "Use at most 72 characters"),
+});
+
+/** Creates a supplier login with a temporary password (they choose their own at first sign-in). Owner only. */
+export async function createSupplierLogin(input: unknown): Promise<ActionResult> {
+  const denied = await staff(true);
+  if (denied) return denied;
+  const parsed = loginSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
+  const v = parsed.data;
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return { ok: false, message: problem };
+
+  const { data: created, error: authError } = await admin.auth.admin.createUser({ email: v.email, password: v.password, email_confirm: true });
+  if (authError || !created.user) {
+    logError("supplier login create", authError);
+    const exists = authError?.code === "email_exists";
+    return { ok: false, message: exists ? "A user with this email already exists." : adminErrorMessage("create the login", authError ?? { message: "no details" }), fieldErrors: exists ? { email: "Already in use" } : undefined };
+  }
+  const { error } = await admin.from("profiles").upsert({ id: created.user.id, name: v.name, role: v.role, supplier_id: v.supplierId, active: true, must_change_password: true });
+  if (error) {
+    logError("supplier login profile", error);
+    // Do not leave a login behind that has no profile.
+    await admin.auth.admin.deleteUser(created.user.id);
+    return { ok: false, message: "Could not create the login. Try again." };
+  }
+  refresh();
+  return { ok: true, message: `${v.name} can now sign in with the temporary password` };
+}
+
+/** Switches a supplier login on or off. Owner only. */
+export async function setSupplierLoginActive(userId: unknown, active: unknown): Promise<ActionResult> {
+  const denied = await staff(true);
+  if (denied) return denied;
+  const user = id(userId);
+  if (!user || typeof active !== "boolean") return NOT_ALLOWED;
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return { ok: false, message: problem };
+  // Only ever a supplier login: this can never switch one of VRPRIME's own people off.
+  const { error } = await admin.from("profiles").update({ active }).eq("id", user).in("role", [...SUPPLIER_ROLES]);
+  if (error) return failed(error, "save the login");
+  refresh();
+  return { ok: true, message: active ? "Login switched on" : "Login switched off" };
+}
+
+// ---- VRPRIME's own logins (owner only) -------------------------------------------------------------------------------------
+
+const staffLoginSchema = z.object({
+  name: z.string().trim().min(1, "Enter a name").max(80),
+  email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email")),
+  role: z.enum(["owner", "admin"]),
+  password: z.string().min(8, "Use at least 8 characters").max(72, "Use at most 72 characters"),
+});
+
+/** Creates a login for one of VRPRIME's own people, with a temporary password. Owner only. */
+export async function createStaffLogin(input: unknown): Promise<ActionResult> {
+  const denied = await staff(true);
+  if (denied) return denied;
+  const parsed = staffLoginSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
+  const v = parsed.data;
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return { ok: false, message: problem };
+
+  const { data: created, error: authError } = await admin.auth.admin.createUser({ email: v.email, password: v.password, email_confirm: true });
+  if (authError || !created.user) {
+    logError("staff login create", authError);
+    const exists = authError?.code === "email_exists";
+    return { ok: false, message: exists ? "A user with this email already exists." : adminErrorMessage("create the login", authError ?? { message: "no details" }), fieldErrors: exists ? { email: "Already in use" } : undefined };
+  }
+  const { error } = await admin.from("profiles").upsert({ id: created.user.id, name: v.name, role: v.role, active: true, must_change_password: true });
+  if (error) {
+    logError("staff login profile", error);
+    await admin.auth.admin.deleteUser(created.user.id);
+    return { ok: false, message: "Could not create the login. Try again." };
+  }
+  refresh();
+  return { ok: true, message: `${v.name} can now sign in with the temporary password` };
+}
+
+/** Switches one of VRPRIME's own logins on or off. Owner only; the database refuses to switch off the last owner. */
+export async function setStaffLoginActive(userId: unknown, active: unknown): Promise<ActionResult> {
+  const denied = await staff(true);
+  if (denied) return denied;
+  const user = id(userId);
+  if (!user || typeof active !== "boolean") return NOT_ALLOWED;
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return { ok: false, message: problem };
+  const { error } = await admin.from("profiles").update({ active }).eq("id", user).in("role", ["owner", "admin"]);
+  if (error) {
+    if (error.code === "23514") return { ok: false, message: "There must always be at least one active owner." };
+    return failed(error, "save the login");
+  }
+  refresh();
+  return { ok: true, message: active ? "Login switched on" : "Login switched off" };
+}

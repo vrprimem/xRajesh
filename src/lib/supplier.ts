@@ -1,0 +1,270 @@
+// The supplier portal's plain logic: labels and barcodes, the products sheet, the scan list kept on the phone, and the
+// counts of a dispatch. No React, no database: `node --test` runs it.
+
+export type CartonType = "H" | "T";
+export const CARTON_TYPE_LABEL: Record<CartonType, string> = { H: "Hard", T: "2-ply" };
+
+export const PRODUCT_CATEGORIES = ["kitchen_cleaner", "repellent", "other_cleaning", "other"] as const;
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
+export const CATEGORY_LABEL: Record<ProductCategory, string> = {
+  kitchen_cleaner: "Kitchen cleaner",
+  repellent: "Repellent",
+  other_cleaning: "Other cleaning",
+  other: "Other",
+};
+
+export type DispatchStatus = "planned" | "loading" | "closed" | "received" | "cancelled";
+export const DISPATCH_STATUS_LABEL: Record<DispatchStatus, string> = {
+  planned: "Planned",
+  loading: "Loading",
+  closed: "Closed, on its way",
+  received: "Received",
+  cancelled: "Cancelled",
+};
+
+export type ProduceStatus = "open" | "accepted" | "in_production" | "dispatched" | "cleared";
+export const PRODUCE_STATUS_LABEL: Record<ProduceStatus, string> = {
+  open: "No answer yet",
+  accepted: "Accepted",
+  in_production: "In production",
+  dispatched: "Dispatched",
+  cleared: "Stock is back",
+};
+
+// ---- Barcodes ----------------------------------------------------------------------------------------------------------
+
+/** The check digit of a run of digits: weights 3, 1, 3, 1 ... from the right. The database makes it the same way. */
+export function checkDigit(digits: string): number {
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) sum += Number(digits[digits.length - 1 - i]) * (i % 2 === 0 ? 3 : 1);
+  return (10 - (sum % 10)) % 10;
+}
+
+/** A carton barcode: 16 digits, starting with 9, the last one the check digit. Catches a mistyped number. */
+export function isCartonBarcode(code: string): boolean {
+  return /^9\d{15}$/.test(code) && checkDigit(code.slice(0, 15)) === Number(code[15]);
+}
+
+/** What a scanner or a typing hand gave us, down to its digits. */
+export function cleanBarcode(raw: string): string {
+  return raw.replace(/\D/g, "");
+}
+
+// Code 128: the bar and space widths of each value (bar, space, bar, space, bar, space), 0 to 105. Each is 11 modules.
+const CODE128 =
+  "212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232".split(
+    " ",
+  );
+const CODE128_STOP = "2331112";
+const START_C = 105;
+
+/** The Code 128 values of an even run of digits, in set C (two digits per value): start, pairs, checksum. */
+export function code128Values(digits: string): number[] {
+  if (!/^\d+$/.test(digits) || digits.length % 2 !== 0) throw new Error("Code 128 set C needs an even number of digits");
+  const values = [START_C];
+  for (let i = 0; i < digits.length; i += 2) values.push(Number(digits.slice(i, i + 2)));
+  const sum = values.reduce((n, v, i) => n + v * (i === 0 ? 1 : i), 0);
+  values.push(sum % 103);
+  return values;
+}
+
+/** The bars of a Code 128 barcode as widths in modules, starting with a bar: bar, space, bar, space ... */
+export function code128Widths(digits: string): number[] {
+  const pattern = code128Values(digits).map((v) => CODE128[v]).join("") + CODE128_STOP;
+  return [...pattern].map(Number);
+}
+
+/**
+ * The barcode as an SVG picture. Bars only (no numbers): the label prints the number underneath itself. A quiet zone of
+ * 10 modules is left on each side, as scanners need.
+ */
+export function code128Svg(digits: string, height = 60): string {
+  const widths = code128Widths(digits);
+  const quiet = 10;
+  let x = quiet;
+  let bars = "";
+  widths.forEach((w, i) => {
+    if (i % 2 === 0) bars += `<rect x="${x}" y="0" width="${w}" height="${height}"/>`;
+    x += w;
+  });
+  const total = x + quiet;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${height}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Barcode ${digits}"><rect width="${total}" height="${height}" fill="#fff"/><g fill="#000">${bars}</g></svg>`;
+}
+
+// ---- The products sheet --------------------------------------------------------------------------------------------------
+
+export type ProductInput = {
+  name: string;
+  master_code: string | null;
+  category: ProductCategory;
+  units_per_carton: number;
+  carton_type: CartonType;
+  daily_capacity: number | null;
+  active: boolean;
+};
+
+export const MAX_PRODUCT_ROWS = 2000;
+
+const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const COLUMNS: Record<keyof Omit<ProductInput, "active">, string[]> = {
+  name: ["name", "product", "productname", "item", "itemname"],
+  master_code: ["mastersku", "vrprimemastersku", "master", "mastercode", "sku", "vrprimesku", "code"],
+  category: ["category", "type"],
+  units_per_carton: ["unitspercarton", "pcspercarton", "piecespercarton", "pcscarton", "cartonqty", "unitscarton", "packsize", "pcs"],
+  carton_type: ["cartontype", "carton", "defaultcartontype"],
+  daily_capacity: ["dailycapacity", "capacity", "dailyproductioncapacity", "perday", "capacityperday"],
+};
+
+function categoryOf(text: string): ProductCategory | null {
+  const k = key(text);
+  if (!k) return "other";
+  if (k.includes("kitchen")) return "kitchen_cleaner";
+  if (k.includes("repel")) return "repellent";
+  if (k.includes("clean")) return "other_cleaning";
+  if (k === "other" || k === "others") return "other";
+  return null;
+}
+
+function cartonTypeOf(text: string): CartonType | null {
+  const k = key(text);
+  if (!k || k === "h" || k.startsWith("hard")) return "H";
+  if (k === "t" || k.startsWith("2ply") || k.startsWith("twoply") || k === "ply2" || k === "2") return "T";
+  return null;
+}
+
+const wholeNumber = (text: string): number | null => {
+  const t = text.replace(/,/g, "").trim();
+  return /^\d+$/.test(t) ? Number(t) : null;
+};
+
+/**
+ * Reads the products sheet (the rows of a .csv or the first sheet of an .xlsx). The first row is the headings, found by
+ * name in any order: a name and units per carton are needed; master SKU, category, carton type and daily capacity are
+ * optional. A row with a problem is reported with its row number and nothing is imported until the sheet is clean.
+ */
+export function parseProductsTable(lines: string[][]): { rows: ProductInput[]; errors: string[] } {
+  const errors: string[] = [];
+  const header = (lines[0] ?? []).map((h) => key(String(h ?? "")));
+  const col = (names: string[]) => header.findIndex((h) => names.includes(h));
+  const at = {
+    name: col(COLUMNS.name),
+    master: col(COLUMNS.master_code),
+    category: col(COLUMNS.category),
+    units: col(COLUMNS.units_per_carton),
+    carton: col(COLUMNS.carton_type),
+    capacity: col(COLUMNS.daily_capacity),
+  };
+  if (at.name < 0) errors.push('No "Name" column was found in the first row.');
+  if (at.units < 0) errors.push('No "Units per carton" column was found in the first row.');
+  if (errors.length) return { rows: [], errors };
+
+  const rows: ProductInput[] = [];
+  const seen = new Set<string>();
+  const cell = (line: string[], i: number) => (i < 0 ? "" : String(line[i] ?? "").trim());
+  lines.slice(1).forEach((line, index) => {
+    const rowNo = index + 2;
+    if (line.every((c) => String(c ?? "").trim() === "")) return;
+    const name = cell(line, at.name);
+    if (!name) return void errors.push(`Row ${rowNo}: the name is empty.`);
+    if (name.length > 200) return void errors.push(`Row ${rowNo}: the name is longer than 200 characters.`);
+    if (seen.has(name.toLowerCase())) return void errors.push(`Row ${rowNo}: "${name}" is in the sheet twice.`);
+    seen.add(name.toLowerCase());
+    const units = wholeNumber(cell(line, at.units));
+    if (units === null || units < 1 || units > 100000) return void errors.push(`Row ${rowNo} (${name}): units per carton must be a whole number from 1.`);
+    const category = categoryOf(cell(line, at.category));
+    if (!category) return void errors.push(`Row ${rowNo} (${name}): category "${cell(line, at.category)}" is not kitchen cleaner, repellent, other cleaning or other.`);
+    const carton = cartonTypeOf(cell(line, at.carton));
+    if (!carton) return void errors.push(`Row ${rowNo} (${name}): carton type "${cell(line, at.carton)}" is not Hard or 2-ply.`);
+    const capText = cell(line, at.capacity);
+    const capacity = capText === "" ? null : wholeNumber(capText);
+    if (capText !== "" && capacity === null) return void errors.push(`Row ${rowNo} (${name}): daily capacity must be a whole number.`);
+    rows.push({ name, master_code: cell(line, at.master) || null, category, units_per_carton: units, carton_type: carton, daily_capacity: capacity, active: true });
+  });
+  if (rows.length > MAX_PRODUCT_ROWS) errors.push(`The sheet has ${rows.length} products; ${MAX_PRODUCT_ROWS} at most in one go.`);
+  if (!rows.length && !errors.length) errors.push("The sheet has no products under its headings.");
+  return { rows: errors.length ? [] : rows, errors };
+}
+
+// ---- A dispatch's counts -------------------------------------------------------------------------------------------------
+
+export type CartonLite = { carton_type: CartonType; status: "issued" | "loaded" | "void"; units: number; replaces?: string | null };
+export type TypeCount = { planned: number; loaded: number; left: number };
+export type DispatchCounts = { planned: number; loaded: number; left: number; voided: number; units: number; byType: Record<CartonType, TypeCount> };
+
+/**
+ * Cartons scanned against planned, split by carton type. Planned comes from the plan's lines (a reprint or a void
+ * does not change the plan); loaded, left (label not scanned and not void) and voided come from the labels.
+ */
+export function dispatchCounts(lines: { carton_type: CartonType; cartons: number }[], cartons: CartonLite[]): DispatchCounts {
+  const byType: Record<CartonType, TypeCount> = { H: { planned: 0, loaded: 0, left: 0 }, T: { planned: 0, loaded: 0, left: 0 } };
+  for (const l of lines) byType[l.carton_type].planned += l.cartons;
+  let voided = 0;
+  let units = 0;
+  for (const c of cartons) {
+    if (c.status === "loaded") {
+      byType[c.carton_type].loaded += 1;
+      units += c.units;
+    } else if (c.status === "issued") byType[c.carton_type].left += 1;
+    else voided += 1;
+  }
+  return {
+    planned: byType.H.planned + byType.T.planned,
+    loaded: byType.H.loaded + byType.T.loaded,
+    left: byType.H.left + byType.T.left,
+    voided,
+    units,
+    byType,
+  };
+}
+
+// ---- The scan list kept on the phone ---------------------------------------------------------------------------------------
+
+/** A scan waiting to be saved: made with no signal, or not yet answered. */
+export type PendingScan = { barcode: string; at: string };
+export type ScanResult = "loaded" | "already" | "void" | "other_dispatch" | "unknown" | "closed";
+export type ScanAnswer = { barcode: string; result: ScanResult; carton_no: number | null };
+
+export const SCAN_RESULT_TEXT: Record<ScanResult, string> = {
+  loaded: "Loaded",
+  already: "Already scanned",
+  void: "This label is void. Do not load it.",
+  other_dispatch: "This carton belongs to another dispatch",
+  unknown: "This barcode is not one of your labels",
+  closed: "This dispatch is closed",
+};
+export const scanIsGood = (r: ScanResult) => r === "loaded" || r === "already";
+
+/** Where a dispatch's waiting list is kept in the phone's storage. */
+export const pendingKey = (dispatchId: string) => `vr-supplier-scans:${dispatchId}`;
+
+/** Adds a scan to the waiting list. The same carton read twice while waiting is kept once (its first time). */
+export function addPending(queue: PendingScan[], barcode: string, at: string): PendingScan[] {
+  return queue.some((s) => s.barcode === barcode) ? queue : [...queue, { barcode, at }];
+}
+
+/** The waiting list after the server answered for these barcodes: every answered scan leaves it, whatever the answer. */
+export function dropAnswered(queue: PendingScan[], answers: Pick<ScanAnswer, "barcode">[]): PendingScan[] {
+  const done = new Set(answers.map((a) => a.barcode));
+  return queue.filter((s) => !done.has(s.barcode));
+}
+
+/** Reads the waiting list back from the phone's storage; anything that is not a list of scans is an empty list. */
+export function readPending(stored: string | null): PendingScan[] {
+  if (!stored) return [];
+  try {
+    const value: unknown = JSON.parse(stored);
+    if (!Array.isArray(value)) return [];
+    return value.filter((s): s is PendingScan => !!s && typeof s === "object" && typeof (s as PendingScan).barcode === "string" && typeof (s as PendingScan).at === "string").slice(0, 5000);
+  } catch {
+    return [];
+  }
+}
+
+// ---- Produce now -----------------------------------------------------------------------------------------------------------
+
+/** Units to make: enough to bring stock + in transit up to twice the minimum, in full cartons. The database's rule. */
+export function suggestedUnits(stock: number, inTransit: number, minUnits: number, unitsPerCarton: number): number {
+  const short = 2 * minUnits - stock - inTransit;
+  if (short <= 0) return 0;
+  return Math.ceil(short / unitsPerCarton) * unitsPerCarton;
+}

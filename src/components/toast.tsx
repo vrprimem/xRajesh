@@ -1,0 +1,66 @@
+"use client";
+
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { redactSecrets } from "@/lib/redact";
+import type { ActionResult } from "@/lib/types";
+
+type Toast = { id: number; message: string; tone: "ok" | "bad" };
+type ToastApi = {
+  show: (message: string, tone?: Toast["tone"]) => void;
+  /** Shows the message of a server action result and returns whether it succeeded. */
+  result: (result: ActionResult<unknown>) => boolean;
+};
+
+const ToastContext = createContext<ToastApi | null>(null);
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const nextId = useRef(1);
+
+  const show = useCallback<ToastApi["show"]>((message, tone = "ok") => {
+    const id = nextId.current++;
+    setToasts((list) => [...list.slice(-2), { id, message, tone }]);
+    window.setTimeout(
+      () => setToasts((list) => list.filter((t) => t.id !== id)),
+      tone === "bad" ? 6000 : 3500,
+    );
+  }, []);
+
+  const api = useMemo<ToastApi>(
+    () => ({
+      show,
+      result: (result) => {
+        // Last line of defence: nothing key-shaped is ever put on screen.
+        show(redactSecrets(result.message), result.ok ? "ok" : "bad");
+        return result.ok;
+      },
+    }),
+    [show],
+  );
+
+  return (
+    <ToastContext value={api}>
+      {children}
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-4 min-[700px]:bottom-6 min-[700px]:left-auto min-[700px]:items-end min-[700px]:px-6"
+      >
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            role="status"
+            className={`toast sp-pop sp-tip tone-row pointer-events-auto max-w-sm !rounded-[var(--radius)] py-3 pr-4 text-sm font-semibold text-ink ${t.tone === "ok" ? "tone-ok" : "tone-bad"}`}
+          >
+            {t.message}
+          </div>
+        ))}
+      </div>
+    </ToastContext>
+  );
+}
+
+export function useToast(): ToastApi {
+  const api = useContext(ToastContext);
+  if (!api) throw new Error("useToast must be used inside ToastProvider");
+  return api;
+}
