@@ -260,6 +260,50 @@ export async function createSupplier(input: unknown): Promise<ActionResult> {
   return { ok: true, message: `${parsed.data.name} added` };
 }
 
+const updateSupplierSchema = z.object({ supplierId: UUID, name: z.string().trim().min(1, "Enter a name").max(120), warehouseId: UUID, active: z.boolean() });
+
+/** Renames a supplier, changes where it sends goods, or switches it off (its logins then see nothing). Owner only. */
+export async function updateSupplier(input: unknown): Promise<ActionResult> {
+  const denied = await staff(true);
+  if (denied) return denied;
+  const parsed = updateSupplierSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Enter a name and pick the warehouse that receives the goods.", fieldErrors: fieldErrors(parsed.error) };
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return { ok: false, message: problem };
+  const v = parsed.data;
+  const { error } = await admin.from("suppliers").update({ name: v.name, warehouse_id: v.warehouseId, active: v.active }).eq("id", v.supplierId);
+  if (error) {
+    if (error.code === "23505") return { ok: false, message: "A supplier with this name already exists.", fieldErrors: { name: "Already in use" } };
+    return failed(error, "save the supplier");
+  }
+  refresh();
+  return { ok: true, message: v.active ? `${v.name} saved` : `${v.name} switched off: its logins can no longer see anything` };
+}
+
+/** Gives a supplier login a new temporary password; they choose their own at their next sign-in. Owner only. */
+export async function resetSupplierPassword(userId: unknown, password: unknown): Promise<ActionResult> {
+  const denied = await staff(true);
+  if (denied) return denied;
+  const user = id(userId);
+  const pw = z.string().min(8, "Use at least 8 characters").max(72).safeParse(password);
+  if (!user) return NOT_ALLOWED;
+  if (!pw.success) return { ok: false, message: "The temporary password needs at least 8 characters." };
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return { ok: false, message: problem };
+  // Only ever a supplier login: this can never change one of VRPRIME's own people's password.
+  const { data: profile } = await admin.from("profiles").select("role").eq("id", user).maybeSingle();
+  if (!profile || !(SUPPLIER_ROLES as readonly string[]).includes(profile.role as string)) return NOT_ALLOWED;
+  const { error: authError } = await admin.auth.admin.updateUserById(user, { password: pw.data });
+  if (authError) {
+    logError("supplier password reset", authError);
+    return { ok: false, message: adminErrorMessage("reset the password", authError) };
+  }
+  const { error } = await admin.from("profiles").update({ must_change_password: true }).eq("id", user);
+  if (error) return failed(error, "finish the reset");
+  refresh();
+  return { ok: true, message: "Password reset. Tell them the temporary password; they choose their own when they sign in." };
+}
+
 const loginSchema = z.object({
   supplierId: UUID,
   name: z.string().trim().min(1, "Enter a name").max(80),

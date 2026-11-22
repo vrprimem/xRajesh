@@ -32,6 +32,7 @@ declare
   c3 public.supplier_cartons;
   cb public.supplier_cartons;
   q uuid;
+  dd uuid;
   res jsonb;
   lab jsonb;
   n int;
@@ -480,6 +481,33 @@ begin
   update public.inventory_stock set pieces = 500 where code = 'SPCHK-1' and warehouse_id = w_main;
   perform private.supplier_produce_check();
   assert (select status from public.supplier_produce_requests where id = q) = 'cleared', 'stock back above the minimum clears the request';
+
+  -- Dispatch due: the supplier's owner and warehouse person hear about an open dispatch due tomorrow, once a day.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  dd := public.supplier_dispatch_create(s_a, (now() at time zone 'Asia/Kolkata')::date + 1, null, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  reset role;
+  update public.supplier_dispatches set due_on = (now() at time zone 'Asia/Kolkata')::date + 1 where id = d_b;
+  n := private.supplier_dispatch_due();
+  assert n = 2, 'both open dispatches due tomorrow are told about (one of each supplier)';
+  assert (select count(*) from public.notifications where kind = 'supplier_due' and user_id = u_raj and title like '%due tomorrow') = 1, 'the supplier owner hears';
+  assert (select count(*) from public.notifications where kind = 'supplier_due' and user_id = u_scan) = 1, 'the warehouse person hears';
+  assert (select count(*) from public.notifications where kind = 'supplier_due' and user_id = u_oth) = 1, 'the other supplier hears only of its own';
+  assert (select count(*) from public.notifications where kind = 'supplier_due' and user_id in (u_off, u_adm)) = 0, 'not a deactivated login, not VRPRIME';
+  n := private.supplier_dispatch_due();
+  assert n = 0, 'once a day';
+  update public.supplier_dispatches set due_on = due_on - 5, due_alerted_on = null where id = dd;
+  n := private.supplier_dispatch_due();
+  assert n = 1 and (select count(*) from public.notifications where kind = 'supplier_due' and user_id = u_raj and title like '%overdue%') = 1, 'an overdue dispatch is told as overdue';
+  blocked := false;
+  begin
+    perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+    perform private.supplier_dispatch_due();
+  exception when insufficient_privilege then blocked := true;
+  end;
+  reset role;
+  assert blocked, 'nobody signed in can run the job';
 
   -- Old stock numbers raise nothing.
   update public.inventory_stock set pieces = 0 where code = 'SPCHK-1' and warehouse_id = w_main;

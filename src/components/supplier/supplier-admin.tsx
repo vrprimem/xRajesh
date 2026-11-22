@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Card, Chip, Field, buttonClass } from "@/components/ui";
 import { SUPPLIER_ROLES, type SupplierRole } from "@/lib/types";
-import { createStaffLogin, createSupplier, createSupplierLogin, setStaffLoginActive, setSupplierLoginActive } from "@/server/actions/supplier";
+import { createStaffLogin, createSupplier, createSupplierLogin, resetSupplierPassword, setStaffLoginActive, setSupplierLoginActive, updateSupplier } from "@/server/actions/supplier";
 
 export const SUPPLIER_ROLE_LABEL: Record<SupplierRole, string> = { supplier_owner: "Supplier owner", supplier_scanner: "Warehouse person (scan only)" };
 
@@ -87,6 +87,8 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "supplier_owner" as SupplierRole, password: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [resetFor, setResetFor] = useState<string | null>(null);
+  const [resetPw, setResetPw] = useState("");
 
   return (
     <Card className="g-pad">
@@ -113,8 +115,11 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
                   {l.email ? ` · ${l.email}` : ""}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {l.active ? <Chip tone="ok">Active</Chip> : <Chip tone="bad">Switched off</Chip>}
+                <button type="button" disabled={pending} onClick={() => setResetFor(resetFor === l.id ? null : l.id)} className={buttonClass("row")}>
+                  Reset password
+                </button>
                 <button
                   type="button"
                   disabled={pending}
@@ -128,6 +133,31 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
                   {l.active ? "Switch off" : "Switch on"}
                 </button>
               </div>
+              {resetFor === l.id ? (
+                <form
+                  className="flex w-full flex-wrap items-end gap-2 pb-1"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    startTransition(async () => {
+                      if (toast.result(await resetSupplierPassword(l.id, resetPw))) {
+                        setResetFor(null);
+                        setResetPw("");
+                      }
+                    });
+                  }}
+                >
+                  <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[12px] text-muted">
+                    New temporary password for {l.name}
+                    <input className="input font-mono" autoComplete="off" value={resetPw} onChange={(e) => setResetPw(e.target.value)} />
+                  </label>
+                  <button type="button" onClick={() => setResetPw(tempPassword())} className={buttonClass("outline")}>
+                    Generate
+                  </button>
+                  <button type="submit" disabled={pending || resetPw.length < 8} className={buttonClass("primary")}>
+                    Save
+                  </button>
+                </form>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -296,6 +326,71 @@ export function StaffLogins({ logins, me }: { logins: StaffLogin[]; me: string }
           </div>
         </form>
       ) : null}
+    </Card>
+  );
+}
+
+/** Owner only: rename the supplier, change where it sends goods, or switch it off (its logins then see nothing). */
+export function EditSupplier({ supplier, warehouses }: { supplier: { id: string; name: string; warehouse_id: string; active: boolean }; warehouses: { id: string; name: string }[] }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: supplier.name, warehouseId: supplier.warehouse_id, active: supplier.active });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className={buttonClass("row")}>
+        Edit supplier
+      </button>
+    );
+  }
+  return (
+    <Card className="g-pad w-full">
+      <form
+        noValidate
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!form.active && supplier.active && !window.confirm(`Switch ${supplier.name} off? Its logins will no longer see anything.`)) return;
+          startTransition(async () => {
+            const result = await updateSupplier({ supplierId: supplier.id, ...form });
+            setErrors(result.ok ? {} : (result.fieldErrors ?? {}));
+            if (toast.result(result)) {
+              setOpen(false);
+              router.refresh();
+            }
+          });
+        }}
+      >
+        <p className="t-card-title">Edit {supplier.name}</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Supplier name" htmlFor="es-name" required error={errors.name}>
+            <input id="es-name" className="input" maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field label="Sends goods to" htmlFor="es-wh" required hint="The supplier sees this warehouse's stock of its own products. Labels are made for this warehouse.">
+            <select id="es-wh" className="input" value={form.warehouseId} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <label className="flex items-center gap-2 text-[13px]">
+          <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
+          Active (its logins can sign in and see the portal)
+        </label>
+        <div className="flex gap-2">
+          <button type="submit" disabled={pending} className={buttonClass("primary")}>
+            {pending ? "Saving..." : "Save"}
+          </button>
+          <button type="button" disabled={pending} onClick={() => setOpen(false)} className={buttonClass("outline")}>
+            Cancel
+          </button>
+        </div>
+      </form>
     </Card>
   );
 }

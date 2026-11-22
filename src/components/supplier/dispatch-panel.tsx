@@ -220,6 +220,15 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
         </Card>
       ) : null}
 
+      {d.status === "planned" && who === "vrprime" ? (
+        <Card className="g-pad">
+          <SectionHead title="Cancel this plan?" sub="Only while nothing is loaded. Its labels become void here; in the inventory software they stay printed and unused." />
+          <button type="button" disabled={pending} onClick={() => run(() => cancelDispatch(d.id), "Cancel this plan? All its labels become void.")} className={buttonClass("danger")}>
+            Cancel plan
+          </button>
+        </Card>
+      ) : null}
+
       {d.status === "closed" && who === "vrprime" ? (
         <Card className="g-pad">
           <SectionHead title="Received at VRPRIME?" sub="Cartons are marked arrived by themselves when the warehouse scans them in with the inventory software (checked every 30 minutes). Use this only if a dispatch arrived and its cartons will not be scanned." />
@@ -288,6 +297,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
               <th scope="col">Carton</th>
               <th scope="col">Barcode</th>
               <th scope="col">Status</th>
+              <th scope="col">Label</th>
               {open && supplierSide ? (
                 <th scope="col">
                   <span className="sr-only">Actions</span>
@@ -305,13 +315,24 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
                 <td>
                   {c.inbound_status === "received" ? <Chip tone="ok">Arrived at VRPRIME</Chip> : c.status === "loaded" ? <Chip tone="info">Loaded{c.loaded_at ? ` ${formatDateTime(c.loaded_at)}` : ""}</Chip> : c.status === "void" ? <Chip tone="bad">Void{c.void_reason ? `: ${c.void_reason}` : ""}</Chip> : <Chip>To scan</Chip>}
                 </td>
+                <td className="whitespace-nowrap">
+                  {c.status === "void" ? (
+                    <span className="t-caption">-</span>
+                  ) : (
+                    <>
+                      <a href={`${base}/${d.id}/labels?carton=${c.id}`} download className={buttonClass("row")} aria-label={`Download label ${c.carton_no}, 100 by 75 millimetres`}>
+                        Download
+                      </a>{" "}
+                      <a href={`${base}/${d.id}/labels?carton=${c.id}&format=a4`} download className={buttonClass("row")} aria-label={`Download label ${c.carton_no} on an A4 sheet`}>
+                        A4
+                      </a>
+                    </>
+                  )}
+                </td>
                 {open && supplierSide ? (
                   <td className="whitespace-nowrap text-right">
                     {c.status === "issued" ? (
                       <>
-                        <a href={`${base}/${d.id}/labels?carton=${c.id}`} download className={buttonClass("row")} aria-label={`Download label ${c.carton_no} as PDF`}>
-                          PDF
-                        </a>{" "}
                         <button type="button" disabled={pending} onClick={() => reprint(c.id, c.carton_no)} className={buttonClass("row")}>
                           Reprint
                         </button>{" "}

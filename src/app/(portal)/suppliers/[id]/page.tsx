@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import { DispatchList, MonthCartons } from "@/components/supplier/dispatch-list";
 import { ProduceList } from "@/components/supplier/produce-list";
 import { StockTable } from "@/components/supplier/stock-table";
-import { SupplierLogins, type SupplierLogin } from "@/components/supplier/supplier-admin";
+import { EditSupplier, SupplierLogins, type SupplierLogin } from "@/components/supplier/supplier-admin";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { canManage, isOwner, requireUser } from "@/lib/auth";
+import { getAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { SUPPLIER_ROLES } from "@/lib/types";
 import { loadDispatches, loadProduce, loadStock, loadSupplier, loadWarehouses } from "@/server/supplier-data";
@@ -33,17 +34,35 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
     isOwner(user) ? supabase.from("profiles").select("id, name, role, active").eq("supplier_id", id).in("role", [...SUPPLIER_ROLES]).order("name") : Promise.resolve({ data: [] }),
   ]);
   const base = `/suppliers/${id}`;
+  // Sign-in emails live in the login system, which only the server key can read; owner only.
+  const loginRows = (logins.data ?? []) as Omit<SupplierLogin, "email">[];
+  const emails = new Map<string, string | null>();
+  if (isOwner(user) && loginRows.length) {
+    const { admin } = getAdmin();
+    if (admin) {
+      await Promise.all(
+        loginRows.map(async (l) => {
+          const { data } = await admin.auth.admin.getUserById(l.id);
+          emails.set(l.id, data?.user?.email ?? null);
+        }),
+      );
+    }
+  }
   const warehouse = warehouses.find((w) => w.id === supplier.warehouse_id)?.name ?? "Unknown warehouse";
 
   return (
     <div className="flex flex-col gap-4">
       <PageTitle
         title={supplier.name}
-        sub={`Sends to ${warehouse}`}
+        sub={supplier.active ? `Sends to ${warehouse}` : `Switched off · sends to ${warehouse}`}
         action={
           <>
             <Link href="/suppliers" className={buttonClass("row")}>
               All suppliers
+            </Link>
+            {isOwner(user) ? <EditSupplier supplier={supplier} warehouses={warehouses} /> : null}
+            <Link href={`${base}/reports`} className={buttonClass("outline")}>
+              Reports
             </Link>
             <Link href={`${base}/products`} className={buttonClass("outline")}>
               Products
@@ -65,7 +84,7 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
       <MonthCartons dispatches={dispatches} />
       <DispatchList dispatches={dispatches} base={`${base}/dispatches`} emptyBody="Create a dispatch plan here, or let the supplier create one." />
 
-      {isOwner(user) ? <SupplierLogins supplierId={id} supplierName={supplier.name} logins={((logins.data ?? []) as Omit<SupplierLogin, "email">[]).map((l) => ({ ...l, email: null }))} /> : null}
+      {isOwner(user) ? <SupplierLogins supplierId={id} supplierName={supplier.name} logins={loginRows.map((l) => ({ ...l, email: emails.get(l.id) ?? null }))} /> : null}
     </div>
   );
 }

@@ -114,6 +114,41 @@ export async function loadSyncState(): Promise<SyncState | null> {
   return (data as SyncState | null) ?? null;
 }
 
+/** VRPRIME's master SKUs (the inventory software's products), for the owner's product form. VRPRIME's people only. */
+export async function loadMasters(): Promise<{ code: string; name: string }[]> {
+  const db = await supplierDb();
+  const { data, error } = await db.from("master_products").select("code, name").order("code").limit(5000);
+  return soft("master SKUs", error, data as { code: string; name: string }[] | null, []);
+}
+
+export type ReportData = { dispatches: { id: string; number: number; status: string; closed_at: string }[]; cartons: { dispatch_id: string; product_id: string; carton_type: "H" | "T"; units: number; inbound_status: string | null }[]; names: Map<string, string> };
+
+/** Dispatches closed in a month (India time) with their loaded cartons, for the carton report. */
+export async function loadReport(supplierId: string, from: string, to: string): Promise<ReportData> {
+  const db = await supplierDb();
+  const { data, error } = await db
+    .from("supplier_dispatches")
+    .select("id, number, status, closed_at")
+    .eq("supplier_id", supplierId)
+    .in("status", ["closed", "received"])
+    .gte("closed_at", from)
+    .lt("closed_at", to)
+    .order("closed_at")
+    .limit(2000);
+  const dispatches = soft("report dispatches", error, data as ReportData["dispatches"] | null, []);
+  const [cartons, products] = await Promise.all([
+    dispatches.length
+      ? db.from("supplier_cartons").select("dispatch_id, product_id, carton_type, units, inbound_status").in("dispatch_id", dispatches.map((d) => d.id)).eq("status", "loaded").limit(100000)
+      : Promise.resolve({ data: [], error: null }),
+    db.from("supplier_products").select("id, name").eq("supplier_id", supplierId).limit(5000),
+  ]);
+  return {
+    dispatches,
+    cartons: soft("report cartons", cartons.error, cartons.data as ReportData["cartons"] | null, []),
+    names: new Map(((products.data ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name])),
+  };
+}
+
 export async function loadSupplier(id: string): Promise<Supplier | null> {
   const db = await supplierDb();
   const { data } = await db.from("suppliers").select("id, name, warehouse_id, active").eq("id", id).maybeSingle();

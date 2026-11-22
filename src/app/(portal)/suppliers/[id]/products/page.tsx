@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ProductsPanel } from "@/components/supplier/products-panel";
 import { PageTitle, buttonClass } from "@/components/ui";
 import { canManage, requireUser } from "@/lib/auth";
-import { loadProducts, loadSupplier } from "@/server/supplier-data";
+import { loadMasters, loadProducts, loadSupplier } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "Supplier products" };
 
@@ -17,7 +17,7 @@ export default async function SupplierProductsPage({ params }: { params: Promise
   if (!UUID.test(id)) notFound();
   const supplier = await loadSupplier(id);
   if (!supplier) notFound();
-  const products = await loadProducts(id);
+  const [products, masters] = await Promise.all([loadProducts(id), loadMasters()]);
   return (
     <>
       <PageTitle
@@ -29,7 +29,7 @@ export default async function SupplierProductsPage({ params }: { params: Promise
           </Link>
         }
       />
-      <ProductsPanel supplierId={id} products={products} canEdit />
+      <ProductsPanel supplierId={id} products={products} canEdit masters={masters} />
     </>
   );
 }

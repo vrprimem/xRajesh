@@ -14,6 +14,7 @@ export default async function SupplierLayout({ children }: { children: ReactNode
     { href: "/supplier", label: "Home" },
     { href: "/supplier/dispatches", label: "Dispatches" },
     { href: "/supplier/products", label: "Products" },
+    { href: "/supplier/reports", label: "Reports" },
     { href: "/supplier/alerts", label: "Alerts", badge: count ?? 0 },
   ];
   return (

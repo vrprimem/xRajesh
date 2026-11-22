@@ -16,7 +16,7 @@ const EMPTY: Form = { name: "", master_code: "", category: "other", units: "", c
  * The supplier's products: search, filter by category, add or edit one, and import the whole sheet (.xlsx or .csv).
  * `canEdit` is the supplier owner and VRPRIME's owner and admin; the warehouse person only reads.
  */
-export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: string; products: ProductRow[]; canEdit: boolean }) {
+export function ProductsPanel({ supplierId, products, canEdit, masters }: { supplierId: string; products: ProductRow[]; canEdit: boolean; masters?: { code: string; name: string }[] }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -129,8 +129,21 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
               <Field label="Product name" htmlFor="sp-name" required hint={form.editing ? "The name identifies the product and cannot be changed here." : undefined}>
                 <input id="sp-name" className="input" maxLength={200} value={form.name} disabled={form.editing} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </Field>
-              <Field label="VRPRIME master SKU" htmlFor="sp-master" hint="The code VRPRIME uses for this product. Needed before it can go on a dispatch: labels and stock both come from it.">
-                <input id="sp-master" className="input" maxLength={200} autoCapitalize="characters" value={form.master_code} onChange={(e) => setForm({ ...form, master_code: e.target.value })} />
+              <Field
+                label="VRPRIME master SKU"
+                htmlFor="sp-master"
+                hint={masters?.length ? "Start typing the code or the name and pick it from the list. Labels and stock both come from it." : "The code VRPRIME uses for this product, exactly as VRPRIME gives it. Needed before it can go on a dispatch."}
+              >
+                <input id="sp-master" className="input" maxLength={200} autoCapitalize="characters" autoComplete="off" list={masters?.length ? "sp-masters" : undefined} value={form.master_code} onChange={(e) => setForm({ ...form, master_code: e.target.value })} />
+                {masters?.length ? (
+                  <datalist id="sp-masters">
+                    {masters.map((m) => (
+                      <option key={m.code} value={m.code}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </datalist>
+                ) : null}
               </Field>
               <Field label="Category" htmlFor="sp-cat" required>
                 <select id="sp-cat" className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ProductCategory })}>
