@@ -288,9 +288,9 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
           return (
             <div key={type} className="sp-card p-3">
               <p className="t-caption">{CARTON_TYPE_LABEL[type]}</p>
-              <p className="text-[30px] font-semibold leading-tight tabular-nums">
+              <p className="t-score mt-1.5 text-[44px]">
                 {formatNumber(c.loaded + c.onPhone)}
-                <span className="text-[15px] font-normal text-muted"> / {formatNumber(planned[type])}</span>
+                <span className="text-[20px] text-muted"> / {formatNumber(planned[type])}</span>
               </p>
             </div>
           );
@@ -316,7 +316,7 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
       <div className={`min-h-[76px] rounded-[14px] border-2 px-4 py-3 ${feedback ? tone : "border-line-soft"}`} role="status" aria-live="assertive">
         {feedback ? (
           <>
-            <p className="text-[17px] font-semibold">{feedback.title}</p>
+            <p className="t-card-title">{feedback.title}</p>
             <p className="text-[13px]">{feedback.detail}</p>
           </>
         ) : (

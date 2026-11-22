@@ -22,12 +22,12 @@ function TypeCounter({ type, planned, loaded, left }: { type: CartonType; planne
   return (
     <div className="rounded-[12px] border border-line-soft p-3">
       <p className="t-caption">{CARTON_TYPE_LABEL[type]} cartons</p>
-      <p className="mt-1 text-[22px] font-semibold leading-none tabular-nums">
+      <p className="t-score mt-1.5 text-[34px]">
         {formatNumber(loaded)}
-        <span className="text-[14px] font-normal text-muted"> / {formatNumber(planned)}</span>
+        <span className="text-[18px] text-muted"> / {formatNumber(planned)}</span>
       </p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-panel2" role="progressbar" aria-valuemin={0} aria-valuemax={planned} aria-valuenow={loaded} aria-label={`${CARTON_TYPE_LABEL[type]} cartons scanned`}>
-        <div className={`h-full ${loaded >= planned && planned > 0 ? "bg-ok" : "bg-accent"}`} style={{ width: `${pct}%` }} />
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-panel2" role="progressbar" aria-valuemin={0} aria-valuemax={planned} aria-valuenow={loaded} aria-label={`${CARTON_TYPE_LABEL[type]} cartons scanned`}>
+        <div className={`h-full rounded-full ${loaded >= planned && planned > 0 ? "bg-ok" : "vr-bar"}`} style={{ width: `${pct}%` }} />
       </div>
       <p className="t-caption mt-1">{left ? `${formatNumber(left)} ${left === 1 ? "label" : "labels"} not scanned` : planned ? "No label left to scan" : "None planned"}</p>
     </div>

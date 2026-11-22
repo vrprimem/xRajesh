@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DispatchList, MonthCartons } from "@/components/supplier/dispatch-list";
+import AuthLayout from "@/app/(auth)/layout";
+import { LoginForm } from "@/components/auth/auth-forms";
+import { PortalShell } from "@/components/portal-shell";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
 import { Label, LABEL_CSS } from "@/components/supplier/label";
 import { PlanForm } from "@/components/supplier/plan-form";
@@ -85,7 +88,7 @@ const PLANS: PlanRow[] = [
   ] },
 ];
 
-const VIEWS = ["home", "dispatch", "scan", "labels", "products", "vrprime", "plan"] as const;
+const VIEWS = ["home", "dispatch", "scan", "labels", "products", "vrprime", "plan", "signin"] as const;
 
 export default async function SupplierPreviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (process.env.NODE_ENV !== "development") notFound();
@@ -93,8 +96,28 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
   const view = VIEWS.find((v) => v === sp.view) ?? "home";
   const who = sp.who === "scanner" ? "scanner" : "owner";
 
+  if (view === "signin") {
+    return (
+      <AuthLayout>
+        <h1 className="t-card-title g-head">Sign in</h1>
+        <LoginForm />
+      </AuthLayout>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-[980px] px-4 py-4 print:max-w-none print:p-0">
+    <PortalShell
+      home="/dev/supplier"
+      title="Rajesh Industries"
+      sub="VRPRIME supplier portal · Rajesh"
+      links={[
+        { href: "/dev/supplier", label: "Home" },
+        { href: "/dev/supplier?view=dispatch", label: "Dispatches" },
+        { href: "/dev/supplier?view=products", label: "Products" },
+        { href: "/dev/supplier?view=vrprime", label: "Reports" },
+        { href: "/dev/supplier?view=plan", label: "Alerts", badge: 3 },
+      ]}
+    >
       <nav className="mb-4 flex flex-wrap gap-2 print:hidden" aria-label="Preview">
         {VIEWS.map((v) => (
           <Link key={v} href={`/dev/supplier?view=${v}`} className={buttonClass(v === view ? "secondary" : "row")}>
@@ -165,6 +188,6 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
           <DispatchPanel detail={{ ...DETAIL, dispatch: { ...DETAIL.dispatch, status: "closed", closed_at: "2026-11-23T09:00:00Z" } }} who="vrprime" base="/dev/supplier" />
         </div>
       ) : null}
-    </div>
+    </PortalShell>
   );
 }

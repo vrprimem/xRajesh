@@ -51,7 +51,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
               ].map(([label, value]) => (
                 <div key={label as string}>
                   <p className="t-caption">{label}</p>
-                  <p className="text-[22px] font-semibold tabular-nums">{typeof value === "number" ? formatNumber(value) : value}</p>
+                  <p className="t-score mt-1.5 text-[32px]">{typeof value === "number" ? formatNumber(value) : value}</p>
                 </div>
               ))}
             </div>
