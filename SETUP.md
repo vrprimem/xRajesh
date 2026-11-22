@@ -16,12 +16,14 @@ You need: a Supabase account, a GitHub account, a Vercel account, and a login fo
 
 ## 2. Create the tables
 
-In the SQL Editor, run these three files from `supabase/migrations`, in this order, each as its own query
-(open the file, copy all of it, paste, Run). Each should end with "Success".
+In the SQL Editor, run these four files from `supabase/migrations`, in this order, each as its own query
+(open the file, copy all of it, paste, Run). Each should end with "Success". Supabase may warn that a file creates
+tables without Row Level Security or drops things: the files switch RLS on themselves and drop only their own helpers.
 
 1. `20261123100000_core.sql`
 2. `20261123101000_vrprime_stock.sql`
 3. `20261123102000_supplier_portal.sql`
+4. `20261123103000_inventory_labels.sql`
 
 Then tell the database where its functions live. Run this with your own project ref in place of `<project-ref>`:
 
@@ -39,13 +41,14 @@ The first user ever created becomes the owner automatically. This happens once.
 In the SQL Editor run `supabase/tests/supplier_check.sql`. It makes fake users, tests every rule and rolls itself back.
 Expect one row: `All supplier portal checks passed`. If it shows an error instead, stop and fix that first.
 
-## 5. Deploy the two functions
+## 5. Deploy the three functions
 
-Edge Functions > Deploy a new function > Via Editor, twice:
+Edge Functions > Deploy a new function > Via Editor, three times:
 
 | Name | Paste the code from | Verify JWT |
 |---|---|---|
 | `inventory-sync` | `supabase/functions/inventory-sync/index.ts`, and add a second file `vrprime.ts` with the contents of `supabase/functions/inventory-sync/vrprime.ts` | **Off** |
+| `carton-labels` | `supabase/functions/carton-labels/index.ts`, and add a second file `labels-api.ts` with the contents of `supabase/functions/carton-labels/labels-api.ts` | **Off** |
 | `notify` | `supabase/functions/notify/index.ts` | **Off** |
 
 Verify JWT is off because each function checks a secret that only this database knows, and refuses everyone else.
@@ -59,7 +62,7 @@ Edge Functions > Secrets:
 
 | Name | Value |
 |---|---|
-| `VRPRIME_API_USERNAME` | The inventory software login's username |
+| `VRPRIME_API_USERNAME` | The inventory software login's username. This login must be allowed to print carton labels. |
 | `VRPRIME_API_PASSWORD` | Its password |
 | `VAPID_PUBLIC_KEY` | From the command below |
 | `VAPID_PRIVATE_KEY` | From the command below. Never put this anywhere else. |
@@ -107,7 +110,8 @@ the phone reads them.
 
 - Stock sync state: `select * from inventory_sync_state;`
 - Scheduled jobs: `select jobname, schedule from cron.job;` (`inventory-sync` every 30 minutes, `supplier-produce-check`
-  10 minutes after it)
+  10 minutes after it, `supplier-receive-check` 15 minutes after it)
+- A dispatch whose labels stopped: `select number, labels_error from supplier_dispatches where labels_error is not null;`
 - Start a sync by hand: `select private.start_inventory_sync();`
 - Run the Produce now check by hand: `select private.supplier_produce_check();`
 - Function logs: Edge Functions > the function > Logs.

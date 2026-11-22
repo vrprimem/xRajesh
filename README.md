@@ -27,17 +27,31 @@ A supplier reaches VRPRIME's stock only through `supplier_stock()`: its own prod
 
 ## A dispatch, start to finish
 
-1. The supplier owner or VRPRIME creates a plan: products, carton type (hard or 2-ply) and cartons. Exactly one label is
-   issued per carton.
-2. Labels print one per page, 100 x 75 mm: a solid black band for a hard carton, a dashed frame for 2-ply, a Code 128
-   barcode and the same number as a QR code.
+1. The supplier owner or VRPRIME creates a plan: products, carton type (hard or 2-ply) and cartons. Every product needs
+   its VRPRIME master SKU. The portal then asks the **VRPRIME inventory software** to print one carton label per carton
+   (50 at a time; the dispatch page shows progress and has "Try again" if it stops).
+2. Labels print one per page, 100 x 75 mm: a solid black band for a hard carton, a dashed frame for 2-ply, the
+   inventory software's own barcode (what the warehouse scans) and the same number as a QR code (what a phone reads).
 3. Each carton is scanned as it is loaded. Android Chrome reads the barcode; other phones read the QR code; the number
    can be typed. The count runs live, split by carton type.
 4. Scans are kept on the phone first and sent after, so loading carries on with no signal. The same carton twice counts
    once; a void label or another dispatch's label is refused.
-5. A damaged label is reprinted: the old number becomes void, the new label gets the next number.
+5. A damaged label is reprinted: the old one becomes void here and the inventory software prints one new label.
 6. Closing needs every label scanned or void, and a photo of the loaded vehicle. Closing locks the dispatch.
-7. VRPRIME presses **Mark as received** when it arrives; until then its units count as "on the way".
+7. The warehouse scans the cartons in with the inventory software, exactly as before. Every 30 minutes the portal reads
+   the labels' states; a label no longer "printed" has arrived, and its carton is marked so. When every loaded carton has
+   arrived the dispatch becomes Received by itself. Cartons still not scanned in 2 days after closing are flagged once to
+   VRPRIME and to the supplier. **Mark as received** remains as a manual fallback.
+
+### What the portal does in the inventory software
+
+Only two things, both in `supabase/functions/carton-labels/labels-api.ts`, which refuses any other request:
+
+- **Print carton labels** for a product at the supplier's warehouse (what the software's own "print labels" button does).
+- **Read** a product's carton labels and their state.
+
+It never records a scan, never does inbound, never retires a label, and never changes a product, a name, stock or a
+setting. A label the supplier voids is void in the portal only; in the inventory software it stays "printed" and unused.
 
 ## Stock and Produce now
 
@@ -51,10 +65,7 @@ A supplier reaches VRPRIME's stock only through `supplier_stock()`: its own prod
 
 ## Not built yet
 
-- Matching VRPRIME's inbound scans carton by carton, QC rejects, and the mismatch and not-received alerts. They need the
-  inventory software to list its inbound scans. `supplier_cartons.inbound_status` is ready for it.
-- Whether the inventory software's scanner accepts this portal's barcodes (16 digits: `9`, a 14-digit running number, a
-  check digit) is still to be agreed with its developer. They are made in one place: `private.supplier_new_barcode()`.
+- QC rejects: the inventory software has no "rejected" state to read, so a rejected carton shows as not arrived.
 - Purchases and budget, daily production, the supplier's own stock ledger, WhatsApp alerts.
 
 ## Local development
@@ -84,8 +95,8 @@ src/components/supplier     the screens' parts: label, scanner, dispatch panel, 
 src/lib/supplier.ts         barcodes, the products sheet, the scan waiting list, dispatch counts (tested)
 src/lib/auth.ts             who is signed in, and which side they are on
 src/server/actions          server actions; every input is checked again here
-supabase/migrations         the whole database: people and access, stock sync, the portal
-supabase/functions          inventory-sync (reads the inventory software), notify (push)
+supabase/migrations         the whole database: people and access, stock sync, the portal, labels from the inventory software
+supabase/functions          inventory-sync (reads stock), carton-labels (prints labels, reads arrivals), notify (push)
 supabase/tests              supplier_check.sql
 ```
 
