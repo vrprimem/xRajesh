@@ -154,15 +154,31 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
           </div>
         ) : null}
 
-        {open && supplierSide ? (
+        {(open && supplierSide) || (d.status !== "cancelled" && cartons.length > 0) ? (
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href={`${base}/${d.id}/scan`} className={buttonClass("primary")}>
-              Scan cartons
-            </Link>
-            <Link href={`${base}/${d.id}/labels`} className={buttonClass("outline")}>
-              Print labels
-            </Link>
+            {open && supplierSide ? (
+              <Link href={`${base}/${d.id}/scan`} className={buttonClass("primary")}>
+                Scan cartons
+              </Link>
+            ) : null}
+            {cartons.length > 0 && d.status !== "cancelled" ? (
+              <>
+                {/* Plain links: the browser downloads the PDF (a Link would try to open it as a page). */}
+                <a href={`${base}/${d.id}/labels`} download className={buttonClass(open && supplierSide ? "outline" : "primary")}>
+                  Download labels (PDF)
+                </a>
+                <a href={`${base}/${d.id}/labels?format=a4`} download className={buttonClass("outline")}>
+                  Download A4 sheet (16 per page)
+                </a>
+              </>
+            ) : null}
           </div>
+        ) : null}
+        {cartons.length > 0 && d.status !== "cancelled" ? (
+          <p className="t-caption mt-2">
+            {open ? "Labels still to scan." : "Every label of the dispatch."} The first is one label per page, 100 × 75 mm, for a label printer. The A4 sheet fits
+            2 × 8 labels of 99.1 × 33.9 mm: print at actual size (100%), not &quot;fit to page&quot;.
+          </p>
         ) : null}
       </Card>
 
@@ -293,6 +309,9 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
                   <td className="whitespace-nowrap text-right">
                     {c.status === "issued" ? (
                       <>
+                        <a href={`${base}/${d.id}/labels?carton=${c.id}`} download className={buttonClass("row")} aria-label={`Download label ${c.carton_no} as PDF`}>
+                          PDF
+                        </a>{" "}
                         <button type="button" disabled={pending} onClick={() => reprint(c.id, c.carton_no)} className={buttonClass("row")}>
                           Reprint
                         </button>{" "}

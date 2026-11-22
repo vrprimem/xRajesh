@@ -152,7 +152,7 @@ export async function voidCarton(cartonId: unknown, reason: unknown): Promise<Ac
 export async function reprintCarton(cartonId: unknown): Promise<ActionResult> {
   const carton = id(cartonId);
   if (!carton) return NOT_ALLOWED;
-  return step("supplier_carton_reprint", { p_carton: carton }, "reprint the label", "Old label voided. The new one is being made and appears here in a few seconds.");
+  return step("supplier_carton_reprint", { p_carton: carton }, "reprint the label", "Old label voided. The new one is being made: refresh in a few seconds and download it with its PDF button.");
 }
 
 /** "Try again": asks the inventory software for the labels a dispatch is still missing. */
