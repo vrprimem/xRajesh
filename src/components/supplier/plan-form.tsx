@@ -141,7 +141,7 @@ export function PlanForm({ supplierId, supplierName, rows, defaultDue, back }: {
       </Card>
 
       <Card className="g-pad">
-        <p className="text-[13px]">
+        <p className="text-[15px]">
           <span className="font-semibold tabular-nums">{formatNumber(total.cartons)}</span> {noun(total.cartons, "carton")} of {chosen.length} {chosen.length === 1 ? "product" : "products"} ·{" "}
           <span className="tabular-nums">{formatNumber(total.units)}</span> {noun(total.units, "unit")}
         </p>

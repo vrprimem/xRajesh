@@ -288,9 +288,9 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
           return (
             <div key={type} className="sp-card p-3">
               <p className="t-caption">{CARTON_TYPE_LABEL[type]}</p>
-              <p className="t-score mt-1.5 text-[44px]">
+              <p className="t-score mt-1.5 text-[52px]">
                 {formatNumber(c.loaded + c.onPhone)}
-                <span className="text-[20px] text-muted"> / {formatNumber(planned[type])}</span>
+                <span className="text-[22px] text-muted"> / {formatNumber(planned[type])}</span>
               </p>
             </div>
           );
@@ -298,17 +298,17 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
       </div>
 
       {waiting.length ? (
-        <p className="rounded-[12px] border border-warn bg-warn-soft px-3 py-2 text-[13px] font-semibold" role="status">
+        <p className="rounded-[12px] border border-warn bg-warn-soft px-3 py-2 text-[15px] font-semibold" role="status">
           {formatNumber(waiting.length)} {waiting.length === 1 ? "scan is" : "scans are"} saved on this phone and waiting to be sent{online ? "." : ": no connection. Keep scanning; they go when the signal is back."}
         </p>
       ) : !online ? (
-        <p className="rounded-[12px] border border-warn bg-warn-soft px-3 py-2 text-[13px] font-semibold" role="status">
+        <p className="rounded-[12px] border border-warn bg-warn-soft px-3 py-2 text-[15px] font-semibold" role="status">
           No connection. Keep scanning; scans are saved on this phone and sent when the signal is back.
         </p>
       ) : null}
 
       {closed ? (
-        <p className="rounded-[12px] border border-bad bg-bad-soft px-3 py-2 text-[13px] font-semibold" role="alert">
+        <p className="rounded-[12px] border border-bad bg-bad-soft px-3 py-2 text-[15px] font-semibold" role="alert">
           This dispatch is closed. No more cartons can be scanned on it.
         </p>
       ) : null}
@@ -317,7 +317,7 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
         {feedback ? (
           <>
             <p className="t-card-title">{feedback.title}</p>
-            <p className="text-[13px]">{feedback.detail}</p>
+            <p className="text-[15px]">{feedback.detail}</p>
           </>
         ) : (
           <p className="t-caption">Point the camera at a label, or type its number. The result of each scan shows here.</p>
@@ -328,7 +328,7 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
         <video ref={video} playsInline muted className={`aspect-[4/3] w-full object-cover ${camera === "on" || camera === "starting" ? "" : "hidden"}`} />
         {camera === "off" || camera === "blocked" ? (
           <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 bg-surface2 p-4 text-center">
-            {camera === "blocked" ? <p className="text-[13px] font-semibold text-bad">The camera could not be opened. Allow camera access for this site in the browser, or type the numbers below.</p> : null}
+            {camera === "blocked" ? <p className="text-[15px] font-semibold text-bad">The camera could not be opened. Allow camera access for this site in the browser, or type the numbers below.</p> : null}
             <button type="button" onClick={() => setCamera("starting")} className={buttonClass("primary")}>
               {camera === "blocked" ? "Try the camera again" : "Start the camera"}
             </button>

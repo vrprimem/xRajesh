@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { LOGO } from "@/lib/logo";
 
 function Icon({ children, className = "h-6 w-6" }: { children: ReactNode; className?: string }) {
@@ -262,35 +262,12 @@ export const BarsIcon = (p: IconProps) => (
   </Icon>
 );
 
-/**
- * The VR Prime mark, "Sunset V": a night-violet tile in every theme with a sunset border, and the V in the same sunset
- * over a blurred copy of itself, like a neon sign. Under 24 px the blurred copy is left out so the V stays crisp. The
- * ids are per instance, so several logos can share a page.
- */
+/** The VR Prime mark: a bold black V on a safety-yellow tile, the same in light and dark. */
 export function Logo({ size = 30, className = "" }: { size?: number; className?: string }) {
-  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const neon = `vr-neon-${id}`;
-  const glow = `vr-glow-${id}`;
-  const paint = `url(#${neon})`;
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" className={`shrink-0 ${className}`}>
-      <defs>
-        <linearGradient id={neon} x1="0" y1="0" x2="1" y2="1">
-          {LOGO.stops.map(([offset, colour]) => (
-            <stop key={offset} offset={offset} stopColor={colour} />
-          ))}
-        </linearGradient>
-        {size >= 24 ? (
-          <filter id={glow} x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3.5" />
-          </filter>
-        ) : null}
-      </defs>
-      <rect x="1.5" y="1.5" width="61" height="61" rx="17" fill={LOGO.tile} stroke={paint} strokeWidth="3" />
-      {size >= 24 ? (
-        <path d={LOGO.v} fill="none" stroke={paint} strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" filter={`url(#${glow})`} opacity=".9" />
-      ) : null}
-      <path d={LOGO.v} fill="none" stroke={paint} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+      <rect width="64" height="64" rx="14" fill={LOGO.tile} />
+      <path d={LOGO.v} fill="none" stroke={LOGO.ink} strokeWidth={LOGO.stroke} strokeLinecap="square" strokeLinejoin="miter" />
     </svg>
   );
 }

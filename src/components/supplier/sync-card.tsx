@@ -26,7 +26,7 @@ export function SyncCard({ state }: { state: SyncState | null }) {
             {state?.last_ok_at ? `Last read ${formatDateTime(state.last_ok_at)}${state.last_products ? `: ${formatNumber(state.last_products)} products` : ""}. ` : ""}
             Read every 30 minutes. Warehouses and master SKUs come from it too.
           </p>
-          {failed ? <p className="mt-1 text-[13px] font-semibold text-bad">{state?.last_error}</p> : null}
+          {failed ? <p className="mt-1 text-[15px] font-semibold text-bad">{state?.last_error}</p> : null}
         </div>
         <button
           type="button"

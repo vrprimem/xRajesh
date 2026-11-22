@@ -19,8 +19,8 @@ export function MonthCartons({ dispatches }: { dispatches: DispatchSummary[] }) 
   return (
     <Card className="g-pad">
       <p className="t-card-title">Cartons sent this month</p>
-      <p className="mt-2 text-[13px]">
-        <span className="t-score mr-0.5 text-[34px]">{formatNumber(total.H + total.T)}</span> {noun(total.H + total.T, "carton")} in {sent.length} {sent.length === 1 ? "dispatch" : "dispatches"}
+      <p className="mt-2 text-[15px]">
+        <span className="t-score mr-0.5 text-[42px]">{formatNumber(total.H + total.T)}</span> {noun(total.H + total.T, "carton")} in {sent.length} {sent.length === 1 ? "dispatch" : "dispatches"}
       </p>
       <p className="t-caption mt-1">
         {CARTON_TYPE_LABEL.H} {formatNumber(total.H)} · {CARTON_TYPE_LABEL.T} {formatNumber(total.T)} · {formatNumber(total.units)} {noun(total.units, "unit")}

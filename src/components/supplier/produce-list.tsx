@@ -33,10 +33,10 @@ export function ProduceList({ rows, canAnswer }: { rows: ProduceRow[]; canAnswer
       {rows.map((r) => (
         <li key={r.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
-            <p className="min-w-0 text-[14px] font-semibold">{r.product}</p>
+            <p className="min-w-0 text-[16px] font-semibold">{r.product}</p>
             <Chip tone={r.status === "open" ? "bad" : r.status === "dispatched" ? "ok" : "info"}>{PRODUCE_STATUS_LABEL[r.status]}</Chip>
           </div>
-          <p className="text-[13px]">
+          <p className="text-[15px]">
             Make <span className="font-semibold tabular-nums">{formatNumber(r.suggested_units)}</span> {noun(r.suggested_units, "unit")}
             <span className="text-muted">
               {" "}

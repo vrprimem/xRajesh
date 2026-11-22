@@ -40,7 +40,7 @@ export function PlanList({ plans, who, dispatchBase }: { plans: PlanRow[]; who: 
         return (
           <li key={p.id} className="rounded-[12px] border border-line-soft p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[14px] font-semibold">
+              <p className="text-[16px] font-semibold">
                 Send plan {p.number}
                 <span className={`ml-2 font-normal ${late ? "font-semibold text-bad" : "text-muted"}`}>
                   {late ? "overdue, was due " : "send by "}
@@ -49,8 +49,8 @@ export function PlanList({ plans, who, dispatchBase }: { plans: PlanRow[]; who: 
               </p>
               <Chip tone={TONE[p.status]}>{PLAN_STATUS_LABEL[p.status]}</Chip>
             </div>
-            {p.note ? <p className="mt-1 text-[13px]">{p.note}</p> : null}
-            <table className="mt-2 w-full text-[13px]">
+            {p.note ? <p className="mt-1 text-[15px]">{p.note}</p> : null}
+            <table className="mt-2 w-full text-[15px]">
               <tbody>
                 {p.lines.map((l) => (
                   <tr key={`${l.product_id}-${l.carton_type}`} className="border-t border-line-soft">

@@ -33,13 +33,13 @@ export function NotificationList({ items }: { items: NotificationRow[] }) {
         return (
           <li key={n.id}>
             <button type="button" onClick={() => open(n)} className="focus-ring flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-160 hover:bg-panel2">
-              <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${unread ? "bg-accent" : "bg-transparent"}`} />
+              <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${unread ? "bg-info" : "bg-transparent"}`} />
               <span className="min-w-0 flex-1">
-                <span className={`block text-[14px] ${unread ? "font-semibold" : ""}`}>
+                <span className={`block text-[16px] ${unread ? "font-semibold" : ""}`}>
                   {unread ? <span className="sr-only">Unread: </span> : null}
                   {n.title}
                 </span>
-                {n.body ? <span className="mt-0.5 block text-[13px] text-muted">{n.body}</span> : null}
+                {n.body ? <span className="mt-0.5 block text-[15px] text-muted">{n.body}</span> : null}
                 <span className="t-caption mt-1 block">{formatDateTime(n.created_at)}</span>
               </span>
             </button>

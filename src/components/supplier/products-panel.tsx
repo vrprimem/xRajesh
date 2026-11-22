@@ -106,7 +106,7 @@ export function ProductsPanel({ supplierId, products, canEdit, masters }: { supp
       {problems.length ? (
         <Card className="g-pad">
           <p className="t-card-title text-bad">Not saved</p>
-          <ul className="mt-2 list-disc pl-5 text-[13px]">
+          <ul className="mt-2 list-disc pl-5 text-[15px]">
             {problems.map((p) => (
               <li key={p}>{p}</li>
             ))}
@@ -170,7 +170,7 @@ export function ProductsPanel({ supplierId, products, canEdit, masters }: { supp
                 <input id="sp-cap" className="input" inputMode="numeric" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} />
               </Field>
             </div>
-            <label className="flex items-center gap-2 text-[13px]">
+            <label className="flex items-center gap-2 text-[15px]">
               <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
               Active (can be put on a dispatch plan)
             </label>

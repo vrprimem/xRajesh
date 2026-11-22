@@ -58,14 +58,14 @@ export default async function SupplierHome() {
         {next && counts ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[15px] font-semibold">Dispatch {next.number}</p>
+              <p className="text-[17px] font-semibold">Dispatch {next.number}</p>
               <DispatchStatusChip status={next.status} />
-              <p className={`text-[13px] ${next.due_on < today ? "font-semibold text-bad" : "text-muted"}`}>
+              <p className={`text-[15px] ${next.due_on < today ? "font-semibold text-bad" : "text-muted"}`}>
                 {next.due_on < today ? "Overdue: was due " : next.due_on === today ? "Due today, " : "Due "}
                 {formatDate(next.due_on)}
               </p>
             </div>
-            <p className="text-[13px]">
+            <p className="text-[15px]">
               <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} {noun(counts.planned, "carton")} scanned · {CARTON_TYPE_LABEL.H} {formatNumber(counts.byType.H.loaded)}/{formatNumber(counts.byType.H.planned)} · {CARTON_TYPE_LABEL.T}{" "}
               {formatNumber(counts.byType.T.loaded)}/{formatNumber(counts.byType.T.planned)}
             </p>

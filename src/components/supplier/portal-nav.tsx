@@ -23,7 +23,7 @@ export function PortalNav({ links, home }: { links: PortalLink[]; home: string }
             >
               {l.label}
               {l.badge ? (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-bad px-1 font-sans text-[11px] font-bold not-italic leading-none tabular-nums text-bad-ink">
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-bad px-1 font-sans text-[12px] font-bold not-italic leading-none tabular-nums text-bad-ink">
                   {l.badge > 99 ? "99+" : l.badge}
                   <span className="sr-only"> unread</span>
                 </span>

@@ -30,10 +30,10 @@ export default async function SuppliersPage() {
           <ul className="flex flex-col divide-y divide-line-soft">
             {suppliers.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
-                <Link href={`/suppliers/${s.id}`} className="focus-ring text-[15px] font-semibold underline decoration-line underline-offset-4">
+                <Link href={`/suppliers/${s.id}`} className="focus-ring text-[17px] font-semibold underline decoration-line underline-offset-4">
                   {s.name}
                 </Link>
-                <span className="flex items-center gap-2 text-[13px] text-muted">
+                <span className="flex items-center gap-2 text-[15px] text-muted">
                   Sends to {name(s.warehouse_id)}
                   {s.active ? null : <Chip tone="bad">Switched off</Chip>}
                 </span>

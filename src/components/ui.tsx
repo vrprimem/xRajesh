@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { InboxIcon, Logo } from "@/components/icons";
+import { InboxIcon } from "@/components/icons";
 
 // The shared pieces every screen is made of. Every look lives in globals.css; these only pick classes.
 
@@ -37,7 +37,7 @@ export function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-[13px] font-semibold">
+      <label htmlFor={htmlFor} className="text-[15px] font-semibold">
         {label}
         {required ? <span className="text-bad"> *</span> : <span className="font-normal text-muted"> (optional)</span>}
       </label>
@@ -89,14 +89,5 @@ export function SectionHead({ title, sub, action, id, className = "" }: { title:
       </div>
       {action ? <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{action}</div> : null}
     </header>
-  );
-}
-
-/** The logo with a slow pulsing glow and a shine sweeping across it (the sign-in page). */
-export function LiveLogo({ size = 56 }: { size?: number }) {
-  return (
-    <span className="vr-live-logo" style={{ borderRadius: Math.round((size * 16) / 56) }}>
-      <Logo size={size} />
-    </span>
   );
 }

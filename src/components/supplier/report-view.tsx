@@ -51,11 +51,11 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
               ].map(([label, value]) => (
                 <div key={label as string}>
                   <p className="t-caption">{label}</p>
-                  <p className="t-score mt-1.5 text-[32px]">{typeof value === "number" ? formatNumber(value) : value}</p>
+                  <p className="t-score mt-1.5 text-[36px]">{typeof value === "number" ? formatNumber(value) : value}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-[13px]">
+            <p className="mt-3 text-[15px]">
               <span className="font-semibold tabular-nums">{formatNumber(t.arrived)}</span> of {formatNumber(t.cartons)} {noun(t.cartons, "carton")} scanned in at VRPRIME
               {t.cartons - t.arrived > 0 ? <span className="text-muted"> · {formatNumber(t.cartons - t.arrived)} not yet</span> : null}
             </p>

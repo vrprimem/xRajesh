@@ -82,13 +82,13 @@ export function DispatchForm({ supplierId, products, base, tomorrow }: { supplie
         </div>
 
         <div className="flex flex-col gap-3">
-          <p className="text-[13px] font-semibold">Products and cartons</p>
+          <p className="text-[15px] font-semibold">Products and cartons</p>
           {lines.map((l, i) => {
             const p = byId.get(l.product_id);
             const n = Number(l.cartons);
             return (
               <div key={l.key} className="grid grid-cols-[1fr_auto] items-end gap-2 rounded-[12px] border border-line-soft p-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
-                <label className="col-span-2 flex flex-col gap-1 text-[12px] text-muted sm:col-span-1">
+                <label className="col-span-2 flex flex-col gap-1 text-[14px] text-muted sm:col-span-1">
                   Product
                   <select
                     className="input"
@@ -103,14 +103,14 @@ export function DispatchForm({ supplierId, products, base, tomorrow }: { supplie
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-[12px] text-muted">
+                <label className="flex flex-col gap-1 text-[14px] text-muted">
                   Carton type
                   <select className="input" aria-label={`Carton type, line ${i + 1}`} value={l.carton_type} onChange={(e) => set(l.key, { carton_type: e.target.value as CartonType })}>
                     <option value="H">Hard</option>
                     <option value="T">2-ply</option>
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-[12px] text-muted">
+                <label className="flex flex-col gap-1 text-[14px] text-muted">
                   Cartons
                   <input className="input" inputMode="numeric" aria-label={`Cartons, line ${i + 1}`} value={l.cartons} onChange={(e) => set(l.key, { cartons: e.target.value.replace(/\D/g, "") })} />
                 </label>
@@ -140,7 +140,7 @@ export function DispatchForm({ supplierId, products, base, tomorrow }: { supplie
           </div>
         </div>
 
-        <p className="text-[13px]">
+        <p className="text-[15px]">
           Total: <span className="font-semibold tabular-nums">{formatNumber(totals.H + totals.T)}</span> {noun(totals.H + totals.T, "carton")} ({formatNumber(totals.H)} {CARTON_TYPE_LABEL.H}, {formatNumber(totals.T)} {CARTON_TYPE_LABEL.T}) ·{" "}
           <span className="tabular-nums">{formatNumber(totals.units)}</span> {noun(totals.units, "unit")}. One label is issued per carton.
         </p>

@@ -20,16 +20,16 @@ export const DispatchStatusChip = ({ status }: { status: DispatchStatus }) => <C
 function TypeCounter({ type, planned, loaded, left }: { type: CartonType; planned: number; loaded: number; left: number }) {
   const pct = planned ? Math.min(100, Math.round((loaded / planned) * 100)) : 0;
   return (
-    <div className="rounded-[12px] border border-line-soft p-3">
-      <p className="t-caption">{CARTON_TYPE_LABEL[type]} cartons</p>
-      <p className="t-score mt-1.5 text-[34px]">
+    <div className="rounded-[10px] border-2 border-frame p-3">
+      <p className="text-[15px] font-semibold">{CARTON_TYPE_LABEL[type]} cartons</p>
+      <p className="t-score mt-1.5 text-[42px]">
         {formatNumber(loaded)}
-        <span className="text-[18px] text-muted"> / {formatNumber(planned)}</span>
+        <span className="text-[20px]"> / {formatNumber(planned)}</span>
       </p>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-panel2" role="progressbar" aria-valuemin={0} aria-valuemax={planned} aria-valuenow={loaded} aria-label={`${CARTON_TYPE_LABEL[type]} cartons scanned`}>
-        <div className={`h-full rounded-full ${loaded >= planned && planned > 0 ? "bg-ok" : "vr-bar"}`} style={{ width: `${pct}%` }} />
+      <div className="mt-2.5 h-3 overflow-hidden rounded-[3px] bg-panel2" role="progressbar" aria-valuemin={0} aria-valuemax={planned} aria-valuenow={loaded} aria-label={`${CARTON_TYPE_LABEL[type]} cartons scanned`}>
+        <div className={`h-full ${loaded >= planned && planned > 0 ? "bg-ok" : "vr-bar"}`} style={{ width: `${pct}%` }} />
       </div>
-      <p className="t-caption mt-1">{left ? `${formatNumber(left)} ${left === 1 ? "label" : "labels"} not scanned` : planned ? "No label left to scan" : "None planned"}</p>
+      <p className="t-caption mt-1.5 font-semibold">{left ? `${formatNumber(left)} ${left === 1 ? "label" : "labels"} not scanned` : planned ? "No label left to scan" : "None planned"}</p>
     </div>
   );
 }
@@ -118,12 +118,12 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
             {d.received_at ? ` · received ${formatDateTime(d.received_at)}` : ""}
           </p>
         </div>
-        {d.note ? <p className="mt-2 text-[13px]">{d.note}</p> : null}
+        {d.note ? <p className="mt-2 text-[15px]">{d.note}</p> : null}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <TypeCounter type="H" {...counts.byType.H} />
           <TypeCounter type="T" {...counts.byType.T} />
         </div>
-        <p className="mt-3 text-[13px]">
+        <p className="mt-3 text-[15px]">
           <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} {noun(counts.planned, "carton")} scanned · <span className="tabular-nums">{formatNumber(counts.units)}</span> {noun(counts.units, "unit")} loaded
           {counts.voided ? ` · ${formatNumber(counts.voided)} ${counts.voided === 1 ? "label" : "labels"} void` : ""}
           {!open && d.status !== "cancelled" && counts.loaded ? ` · ${formatNumber(arrived)} of ${formatNumber(counts.loaded)} scanned in at VRPRIME` : ""}
@@ -131,10 +131,10 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
 
         {owed > 0 ? (
           <div className="mt-3 rounded-[12px] border border-warn bg-warn-soft px-3 py-2.5" role="status">
-            <p className="text-[13px] font-semibold">
+            <p className="text-[15px] font-semibold">
               Labels: {formatNumber(made)} of {formatNumber(counts.planned)} made by the VRPRIME inventory software
             </p>
-            <p className="mt-0.5 text-[13px]">
+            <p className="mt-0.5 text-[15px]">
               {d.labels_error
                 ? `It stopped: ${d.labels_error}`
                 : d.labels_run_at
@@ -185,7 +185,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
       {open && supplierSide ? (
         <Card className="g-pad">
           <SectionHead title="Close the dispatch" sub="All three are needed. Closing locks the record." />
-          <ul className="flex flex-col gap-1.5 text-[13px]">
+          <ul className="flex flex-col gap-1.5 text-[15px]">
             {steps.map((s) => (
               <li key={s.text} className="flex items-start gap-2">
                 <span aria-hidden className={s.done ? "text-ok" : "text-faint"}>
@@ -311,7 +311,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
                 <td className="num tabular-nums">{c.carton_no}</td>
                 <th scope="row" className="text-left font-normal">{c.product}</th>
                 <td>{CARTON_TYPE_LABEL[c.carton_type]}</td>
-                <td className="font-mono text-[12px]">{c.barcode}</td>
+                <td className="font-mono text-[14px]">{c.barcode}</td>
                 <td>
                   {c.inbound_status === "received" ? <Chip tone="ok">Arrived at VRPRIME</Chip> : c.status === "loaded" ? <Chip tone="info">Loaded{c.loaded_at ? ` ${formatDateTime(c.loaded_at)}` : ""}</Chip> : c.status === "void" ? <Chip tone="bad">Void{c.void_reason ? `: ${c.void_reason}` : ""}</Chip> : <Chip>To scan</Chip>}
                 </td>

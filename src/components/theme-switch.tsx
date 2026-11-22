@@ -27,20 +27,15 @@ const MODES: { mode: ThemeMode; label: string; Icon: () => ReactElement }[] = [
   { mode: "auto", label: "Auto: follow this device", Icon: Auto },
 ];
 
-/** The browser bar colour for a mode (the page canvas). */
-const BAR: Record<"light" | "dark", string> = { light: "#fff7f0", dark: "#0c0716" };
-
 /**
  * Saves the mode and shows it at once: the cookie, so the server paints the right mode on the very first frame next
- * time; data-theme on the page, which the CSS reads (none for Auto); and the browser bar colour.
+ * time, and data-theme on the page, which the CSS reads (none for Auto). The browser bar stays black in every mode.
  */
 function applyMode(next: ThemeMode) {
   document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
   const root = document.documentElement;
   if (next === "auto") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", next);
-  const shown = next === "auto" ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : next;
-  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", BAR[shown]));
 }
 
 /** Light, Dark, or Auto (follow the phone or computer), applied without a reload. */

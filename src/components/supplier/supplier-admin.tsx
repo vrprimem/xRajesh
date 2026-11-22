@@ -115,7 +115,7 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
           {logins.map((l) => (
             <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold">{l.name}</p>
+                <p className="text-[15px] font-semibold">{l.name}</p>
                 <p className="t-caption break-all">
                   {SUPPLIER_ROLE_LABEL[l.role]}
                   {l.email ? ` · ${l.email}` : ""}
@@ -152,7 +152,7 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
                     });
                   }}
                 >
-                  <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[12px] text-muted">
+                  <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[14px] text-muted">
                     New temporary password for {l.name}
                     <input className="input font-mono" autoComplete="off" value={resetPw} onChange={(e) => setResetPw(e.target.value)} />
                   </label>
@@ -259,7 +259,7 @@ export function StaffLogins({ logins, me }: { logins: StaffLogin[]; me: string }
         {logins.map((l) => (
           <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
             <div className="min-w-0">
-              <p className="text-[13px] font-semibold">
+              <p className="text-[15px] font-semibold">
                 {l.name}
                 {l.id === me ? <span className="font-normal text-muted"> (you)</span> : null}
               </p>
@@ -387,7 +387,7 @@ export function EditSupplier({ supplier, warehouses }: { supplier: { id: string;
             </select>
           </Field>
         </div>
-        <label className="flex items-center gap-2 text-[13px]">
+        <label className="flex items-center gap-2 text-[15px]">
           <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
           Active (its logins can sign in and see the portal)
         </label>
