@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DispatchList, MonthCartons } from "@/components/supplier/dispatch-list";
 import AuthLayout from "@/app/(auth)/layout";
-import { LoginForm } from "@/components/auth/auth-forms";
+import { SignInDoor } from "@/components/auth/sign-in-door";
 import { PortalShell } from "@/components/portal-shell";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
 import { Label, LABEL_CSS } from "@/components/supplier/label";
@@ -99,8 +99,7 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
   if (view === "signin") {
     return (
       <AuthLayout>
-        <h1 className="t-card-title g-head">Sign in</h1>
-        <LoginForm />
+        <SignInDoor door={sp.door === "admin" ? "admin" : "supplier"} />
       </AuthLayout>
     );
   }

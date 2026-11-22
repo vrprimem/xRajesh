@@ -1,9 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { DOOR_PATH, doorForPath } from "@/lib/doors";
 
+// The sign-in pages: /login for suppliers and /login/admin for VRPRIME's own people.
 const PUBLIC_PATHS = ["/login"];
 
-// Keeps the Supabase session fresh and sends signed-out visitors to /login.
+// Keeps the Supabase session fresh and sends signed-out visitors to the sign-in page for what they tried to open.
 // This is a convenience only: real access control is RLS in Postgres plus the
 // checks inside every page and server action.
 export async function proxy(request: NextRequest) {
@@ -31,7 +33,7 @@ export async function proxy(request: NextRequest) {
 
   if (!signedIn && !isPublic) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
+    loginUrl.pathname = DOOR_PATH[doorForPath(path)];
     loginUrl.search = "";
     const redirect = NextResponse.redirect(loginUrl);
     for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);

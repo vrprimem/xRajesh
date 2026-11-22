@@ -468,6 +468,45 @@ select optgroup {
   box-shadow: var(--btn-glow);
 }
 
+/* Sign-in: the switch between the two doors, Supplier and VRPRIME admin. */
+.vr-doors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--surface2);
+  border: 1px solid var(--line);
+}
+.vr-doors a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 15.5px;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 160ms ease-out, background-color 160ms ease-out;
+}
+.vr-doors a:hover {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+.vr-doors a[aria-current="page"] {
+  background: var(--sunset);
+  color: #1b0629;
+  box-shadow: var(--btn-glow);
+}
+
 /* The big name on the sign-in page. */
 .vr-wordmark {
   font-family: var(--font-display);

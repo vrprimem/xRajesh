@@ -34,6 +34,14 @@ export const AlertIcon = (p: IconProps) => (
   </Icon>
 );
 
+/** A shield with a tick: VRPRIME's admin sign-in. */
+export const ShieldIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3.2 19 6v5.2c0 4.3-2.9 8.1-7 9.6-4.1-1.5-7-5.3-7-9.6V6z" />
+    <path d="m9 12 2.2 2.2L15.2 10" />
+  </Icon>
+);
+
 /** A van: dispatch. */
 export const TruckIcon = (p: IconProps) => (
   <Icon {...p}>

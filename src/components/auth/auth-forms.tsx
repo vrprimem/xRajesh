@@ -4,10 +4,12 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { buttonClass, Field } from "@/components/ui";
+import type { Door } from "@/lib/doors";
 import { redactSecrets } from "@/lib/redact";
 import { changePassword, signIn } from "@/server/actions/auth";
 
-export function LoginForm({ notice }: { notice?: string }) {
+/** The sign-in form for one door: the supplier's, or VRPRIME admin's. The server lets in only that door's accounts. */
+export function LoginForm({ door, notice }: { door: Door; notice?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +23,7 @@ export function LoginForm({ notice }: { notice?: string }) {
       onSubmit={(e) => {
         e.preventDefault();
         startTransition(async () => {
-          const result = await signIn({ email, password });
+          const result = await signIn({ email, password, door });
           if (result.ok) {
             router.replace("/");
             router.refresh();
@@ -47,7 +49,7 @@ export function LoginForm({ notice }: { notice?: string }) {
       <button type="submit" disabled={pending} className={buttonClass("primary", "mt-1 w-full")}>
         {pending ? "Signing in…" : "Sign in"}
       </button>
-      <p className="t-caption text-center">No account or forgot your password? Ask the owner to set one for you.</p>
+      <p className="t-caption text-center">No account or forgot your password? Ask {door === "supplier" ? "VRPRIME" : "the owner"} to set one for you.</p>
     </form>
   );
 }

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { DOOR_PATH, doorFor, wrongDoorMessage } from "@/lib/doors";
 import { logError } from "@/lib/redact";
 import { getAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -14,28 +15,36 @@ export async function signIn(input: unknown): Promise<ActionResult> {
     return { ok: false, message: "Check your email and password.", fieldErrors: fieldErrors(parsed.error) };
   }
 
+  const { email, password, door } = parsed.data;
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error || !data.user) {
     return { ok: false, message: "Wrong email or password." };
   }
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("active")
+    .select("active, role")
     .eq("id", data.user.id)
     .maybeSingle();
   if (!profile?.active) {
     await supabase.auth.signOut();
     return { ok: false, message: "This account is not active. Ask the owner to enable it." };
   }
+  // Each sign-in page lets in only its own kind of account: suppliers at one, VRPRIME's own people at the other.
+  if (doorFor(profile.role) !== door) {
+    await supabase.auth.signOut();
+    return { ok: false, message: wrongDoorMessage(door) };
+  }
   return { ok: true, message: "Signed in" };
 }
 
+/** Signs out and goes back to the sign-in page this person uses. */
 export async function signOut(): Promise<void> {
+  const user = await getSessionUser();
   const supabase = await createClient();
   await supabase.auth.signOut();
-  redirect("/login");
+  redirect(DOOR_PATH[user ? doorFor(user.role) : "supplier"]);
 }
 
 export async function changePassword(input: unknown): Promise<ActionResult> {

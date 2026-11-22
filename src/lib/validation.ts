@@ -5,6 +5,8 @@ import { z } from "zod";
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email")),
   password: z.string().min(1, "Enter your password"),
+  /** Which sign-in page was used: the supplier's or VRPRIME admin's. */
+  door: z.enum(["supplier", "admin"]),
 });
 
 export const password = z.string().min(8, "Use at least 8 characters").max(72, "Use at most 72 characters");

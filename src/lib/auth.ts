@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
+import { DOOR_PATH } from "@/lib/doors";
 import { createClient } from "@/lib/supabase/server";
 import { SUPPLIER_ROLES, type AnyUser, type PortalUser, type SessionUser, type SupplierRole } from "@/lib/types";
 
@@ -32,8 +33,8 @@ export const homeFor = (user: Pick<AnyUser, "role">) => (isSupplierLogin(user) ?
 /** For VRPRIME's pages: one of VRPRIME's own people, signed in, active, and past the first-login password change. */
 export async function requireUser(): Promise<SessionUser> {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
-  if (!user.active) redirect("/login?reason=inactive");
+  if (!user) redirect(DOOR_PATH.admin);
+  if (!user.active) redirect(`${DOOR_PATH.admin}?reason=inactive`);
   if (user.must_change_password) redirect("/change-password");
   if (isSupplierLogin(user)) redirect("/supplier");
   return user as SessionUser;
