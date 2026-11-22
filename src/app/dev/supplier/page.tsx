@@ -10,7 +10,7 @@ import { StockTable } from "@/components/supplier/stock-table";
 import { StaffLogins } from "@/components/supplier/supplier-admin";
 import { SyncCard } from "@/components/supplier/sync-card";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
-import { checkDigit, type CartonType } from "@/lib/supplier";
+import type { CartonType } from "@/lib/supplier";
 import type { CartonRow, DispatchDetail, DispatchSummary, ProduceRow, ProductRow, StockRow } from "@/server/supplier-data";
 
 // The supplier portal's screens with fake data and no login, for checking layout at 360px, in dark mode and in print.
@@ -19,10 +19,8 @@ import type { CartonRow, DispatchDetail, DispatchSummary, ProduceRow, ProductRow
 const SUPPLIER = "00000000-0000-4000-8000-000000000001";
 const DISPATCH = "00000000-0000-4000-8000-0000000000d1";
 const pid = (n: number) => `00000000-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
-const code = (n: number) => {
-  const body = `9${String(n).padStart(14, "0")}`;
-  return body + checkDigit(body);
-};
+// Like the inventory software's numbers: 1, the warehouse (01), then a running number.
+const code = (n: number) => `101${String(n).padStart(13, "0")}`;
 
 const PRODUCTS: ProductRow[] = [
   { id: pid(1), name: "Kitchen Cleaner Spray 500ml", master_id: pid(51), master_code: "150-KITCHEN", category: "kitchen_cleaner", units_per_carton: 24, carton_type: "H", daily_capacity: 1200, active: true },
@@ -36,18 +34,18 @@ function fakeCartons(): CartonRow[] {
   const add = (product: ProductRow, type: CartonType, count: number, loaded: number) => {
     for (let i = 0; i < count; i++) {
       const no = out.length + 1;
-      out.push({ id: `c${no}`, product_id: product.id, product: product.name, carton_type: type, units: product.units_per_carton, carton_no: no, barcode: code(4800 + no), status: i < loaded ? "loaded" : "issued", loaded_at: i < loaded ? "2026-11-23T05:40:00Z" : null, void_reason: null, replaces: null });
+      out.push({ id: `c${no}`, product_id: product.id, product: product.name, carton_type: type, units: product.units_per_carton, carton_no: no, barcode: code(4800 + no), status: i < loaded ? "loaded" : "issued", loaded_at: i < loaded ? "2026-11-23T05:40:00Z" : null, void_reason: null, inbound_status: null });
     }
   };
   add(PRODUCTS[0], "H", 6, 4);
   add(PRODUCTS[1], "T", 5, 1);
   out[5] = { ...out[5], status: "void", void_reason: "reprinted" };
-  out.push({ ...out[5], id: "c12", carton_no: 12, barcode: code(4812), status: "issued", void_reason: null, replaces: "c6" });
+  out.push({ ...out[5], id: "c12", carton_no: 12, barcode: code(4812), status: "issued", void_reason: null });
   return out;
 }
 
 const DETAIL: DispatchDetail = {
-  dispatch: { id: DISPATCH, supplier_id: SUPPLIER, number: 7, status: "loading", due_on: "2026-11-24", note: "Tempo MH04 AB 1234, driver Suresh", vehicle_photo_path: null, created_at: "2026-11-22T10:00:00Z", closed_at: null, received_at: null },
+  dispatch: { id: DISPATCH, supplier_id: SUPPLIER, number: 7, status: "loading", due_on: "2026-11-24", note: "Tempo MH04 AB 1234, driver Suresh", vehicle_photo_path: null, created_at: "2026-11-22T10:00:00Z", closed_at: null, received_at: null, labels_run_at: null, labels_error: null },
   lines: [
     { product_id: pid(1), product: PRODUCTS[0].name, carton_type: "H", units_per_carton: 24, cartons: 6 },
     { product_id: pid(2), product: PRODUCTS[1].name, carton_type: "T", units_per_carton: 48, cartons: 5 },

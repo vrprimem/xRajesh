@@ -51,6 +51,10 @@ export type DispatchRow = {
   created_at: string;
   closed_at: string | null;
   received_at: string | null;
+  /** Set while the labels are being asked for from the inventory software. */
+  labels_run_at: string | null;
+  /** Why the last try to get labels stopped, if it did. */
+  labels_error: string | null;
 };
 export type LineRow = { product_id: string; product: string; carton_type: CartonType; units_per_carton: number; cartons: number };
 export type CartonRow = {
@@ -64,7 +68,8 @@ export type CartonRow = {
   status: "issued" | "loaded" | "void";
   loaded_at: string | null;
   void_reason: string | null;
-  replaces: string | null;
+  /** Scanned in at VRPRIME's warehouse, as the inventory software shows it. */
+  inbound_status: "received" | "rejected" | null;
 };
 export type ProduceRow = {
   id: string;
@@ -150,7 +155,7 @@ export async function loadDispatches(supplierId: string, limit = 40): Promise<Di
   const db = await supplierDb();
   const { data, error } = await db
     .from("supplier_dispatches")
-    .select("id, supplier_id, number, status, due_on, note, vehicle_photo_path, created_at, closed_at, received_at")
+    .select("id, supplier_id, number, status, due_on, note, vehicle_photo_path, created_at, closed_at, received_at, labels_run_at, labels_error")
     .eq("supplier_id", supplierId)
     .order("number", { ascending: false })
     .limit(limit);
@@ -166,6 +171,14 @@ export async function loadDispatches(supplierId: string, limit = 40): Promise<Di
   return rows.map((d) => ({ ...d, lines: lineRows.filter((l) => l.dispatch_id === d.id), cartons: cartonRows.filter((c) => c.dispatch_id === d.id) }));
 }
 
+/** The barcode pictures of these labels, as the inventory software sent them (only the labels page needs them). */
+export async function loadLabelPictures(cartonIds: string[]): Promise<Map<string, string | null>> {
+  if (!cartonIds.length) return new Map();
+  const db = await supplierDb();
+  const { data, error } = await db.from("supplier_cartons").select("id, label_svg").in("id", cartonIds).limit(1000);
+  return new Map(soft("label pictures", error, data as { id: string; label_svg: string | null }[] | null, []).map((r) => [r.id, r.label_svg]));
+}
+
 export type DispatchDetail = { dispatch: DispatchRow; lines: LineRow[]; cartons: CartonRow[]; photoUrl: string | null };
 
 /** One dispatch with its plan, every label and a link to the vehicle photo (good for an hour). Null if not visible. */
@@ -173,14 +186,14 @@ export async function loadDispatch(id: string): Promise<DispatchDetail | null> {
   const db = await supplierDb();
   const { data: dispatch } = await db
     .from("supplier_dispatches")
-    .select("id, supplier_id, number, status, due_on, note, vehicle_photo_path, created_at, closed_at, received_at")
+    .select("id, supplier_id, number, status, due_on, note, vehicle_photo_path, created_at, closed_at, received_at, labels_run_at, labels_error")
     .eq("id", id)
     .maybeSingle();
   if (!dispatch) return null;
   const d = dispatch as DispatchRow;
   const [lines, cartons, products] = await Promise.all([
     db.from("supplier_dispatch_lines").select("product_id, carton_type, units_per_carton, cartons").eq("dispatch_id", id).limit(1000),
-    db.from("supplier_cartons").select("id, product_id, carton_type, units, carton_no, barcode, status, loaded_at, void_reason, replaces").eq("dispatch_id", id).order("carton_no").limit(20000),
+    db.from("supplier_cartons").select("id, product_id, carton_type, units, carton_no, barcode, status, loaded_at, void_reason, inbound_status").eq("dispatch_id", id).order("carton_no").limit(20000),
     db.from("supplier_products").select("id, name").eq("supplier_id", d.supplier_id).limit(5000),
   ]);
   const names = new Map<string, string>(((products.data ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name]));

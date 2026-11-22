@@ -33,16 +33,12 @@ export const PRODUCE_STATUS_LABEL: Record<ProduceStatus, string> = {
 
 // ---- Barcodes ----------------------------------------------------------------------------------------------------------
 
-/** The check digit of a run of digits: weights 3, 1, 3, 1 ... from the right. The database makes it the same way. */
-export function checkDigit(digits: string): number {
-  let sum = 0;
-  for (let i = 0; i < digits.length; i++) sum += Number(digits[digits.length - 1 - i]) * (i % 2 === 0 ? 3 : 1);
-  return (10 - (sum % 10)) % 10;
-}
-
-/** A carton barcode: 16 digits, starting with 9, the last one the check digit. Catches a mistyped number. */
+/**
+ * A carton barcode is the VRPRIME inventory software's own: 16 digits starting with 1 (the next two are the warehouse).
+ * The portal never makes one up; it only prints the labels the inventory software issued.
+ */
 export function isCartonBarcode(code: string): boolean {
-  return /^9\d{15}$/.test(code) && checkDigit(code.slice(0, 15)) === Number(code[15]);
+  return /^1\d{15}$/.test(code);
 }
 
 /** What a scanner or a typing hand gave us, down to its digits. */
@@ -75,8 +71,8 @@ export function code128Widths(digits: string): number[] {
 }
 
 /**
- * The barcode as an SVG picture. Bars only (no numbers): the label prints the number underneath itself. A quiet zone of
- * 10 modules is left on each side, as scanners need.
+ * A barcode as an SVG picture, Code 128. Only a stand-in: a label normally carries the picture the inventory software
+ * sent with it. Bars only (no numbers); a quiet zone of 10 modules is left on each side, as scanners need.
  */
 export function code128Svg(digits: string, height = 60): string {
   const widths = code128Widths(digits);
@@ -89,6 +85,15 @@ export function code128Svg(digits: string, height = 60): string {
   });
   const total = x + quiet;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${height}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Barcode ${digits}"><rect width="${total}" height="${height}" fill="#fff"/><g fill="#000">${bars}</g></svg>`;
+}
+
+/** The barcode picture the inventory software sent, if it is a plain picture; anything that could run code is refused. */
+export function plainSvg(svg: string | null | undefined): string | null {
+  if (!svg) return null;
+  const s = svg.trim();
+  if (s.length > 20000 || !/^<svg[\s>]/i.test(s) || !/<\/svg>$/i.test(s)) return null;
+  if (/<script|<foreignObject|<iframe|<image|<use|\son\w+\s*=|javascript:|href\s*=|url\(/i.test(s)) return null;
+  return s;
 }
 
 // ---- The products sheet --------------------------------------------------------------------------------------------------
@@ -215,6 +220,22 @@ export function dispatchCounts(lines: { carton_type: CartonType; cartons: number
     units,
     byType,
   };
+}
+
+/** A label as far as "is one still owed" goes. */
+export type LabelLite = { product_id: string; carton_type: CartonType; status: "issued" | "loaded" | "void"; void_reason: string | null };
+
+/**
+ * Labels the inventory software has still to make for a plan: each line's cartons, less the labels it has. A label
+ * voided for a reprint does not count (its replacement is owed); one voided as unused does. The database's rule.
+ */
+export function labelsOwed(lines: { product_id: string; carton_type: CartonType; cartons: number }[], labels: LabelLite[]): number {
+  let owed = 0;
+  for (const l of lines) {
+    const have = labels.filter((c) => c.product_id === l.product_id && c.carton_type === l.carton_type && !(c.status === "void" && c.void_reason === "reprinted")).length;
+    owed += Math.max(0, l.cartons - have);
+  }
+  return owed;
 }
 
 // ---- The scan list kept on the phone ---------------------------------------------------------------------------------------

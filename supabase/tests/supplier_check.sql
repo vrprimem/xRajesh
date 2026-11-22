@@ -1,5 +1,5 @@
 -- Supplier portal check: a supplier login sees its own supplier and nothing else; one supplier never sees another's data;
--- labels, scanning, closing, thresholds and "Produce now" behave as the plan says.
+-- labels (printed by the inventory software), scanning, closing, arrivals, thresholds and "Produce now" behave as planned.
 --
 -- Runs in one transaction that is rolled back, so it is safe on production and leaves nothing behind.
 -- Any failed check raises an error.
@@ -33,6 +33,7 @@ declare
   cb public.supplier_cartons;
   q uuid;
   res jsonb;
+  lab jsonb;
   n int;
   blocked boolean;
   t text;
@@ -80,6 +81,7 @@ begin
 
   -- Master SKUs and stock: one supplied by A, one that has nothing to do with A.
   insert into public.master_products (name, code) values ('SP Check Product', 'SPCHK-1') returning id into m_a;
+  insert into public.master_products (name, code) values ('SP Check Second', 'SPCHK-2'), ('SP Check B', 'SPCHK-B');
   insert into public.master_products (name, code) values ('SP Check Secret', 'SPCHK-X') returning id into m_x;
   insert into public.inventory_stock (code, warehouse_id, pieces)
   select v.code, v.wid, v.pieces
@@ -178,12 +180,13 @@ begin
   assert blocked, 'an unknown master SKU refuses the whole list';
 
   res := public.supplier_products_save(s_a, '[{"name":"SP Kitchen Cleaner","master_code":"spchk-1","category":"kitchen_cleaner","units_per_carton":24,"carton_type":"H"},
+                                              {"name":"SP Second","master_code":"SPCHK-2","units_per_carton":12,"carton_type":"T"},
                                               {"name":"SP Unlinked","units_per_carton":12,"carton_type":"T"}]'::jsonb);
-  assert (res->>'added')::int = 2, 'two products added';
+  assert (res->>'added')::int = 3, 'three products added';
   res := public.supplier_products_save(s_a, '[{"name":"sp kitchen cleaner","master_code":"SPCHK-1","category":"kitchen_cleaner","units_per_carton":20}]'::jsonb);
   assert (res->>'changed')::int = 1 and (res->>'added')::int = 0, 'the same name again updates, never duplicates';
   select id into strict p_a from public.supplier_products where supplier_id = s_a and master_id = m_a;
-  select id into strict p_a2 from public.supplier_products where supplier_id = s_a and name = 'SP Unlinked';
+  select id into strict p_a2 from public.supplier_products where supplier_id = s_a and name = 'SP Second';
   assert (select units_per_carton from public.supplier_products where id = p_a) = 20, 'units per carton updated';
 
   -- The scanner cannot change products.
@@ -206,10 +209,10 @@ begin
   -- =====================================================================================
   perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
   select count(*) into n from public.supplier_stock(s_a);
-  assert n = 2, 'the stock view lists the supplier''s own products only';
+  assert n = 3, 'the stock view lists the supplier''s own products only';
   assert (select stock_units from public.supplier_stock(s_a) where product_id = p_a) = 40,
     'stock is the supplier''s warehouse only, never another warehouse';
-  assert (select stock_units from public.supplier_stock(s_a) where product_id = p_a2) is null, 'no stock is shown for an unlinked product';
+  assert (select stock_units from public.supplier_stock(s_a) where name = 'SP Unlinked') is null, 'no stock is shown for an unlinked product';
   blocked := false;
   begin
     perform * from public.supplier_stock(s_b);
@@ -220,13 +223,57 @@ begin
   -- =====================================================================================
   -- 4. A dispatch: labels, scanning, void, reprint, photo, close
   -- =====================================================================================
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_create(s_a, current_date + 1, null, jsonb_build_array(jsonb_build_object(
+      'product_id', (select id from public.supplier_products where supplier_id = s_a and name = 'SP Unlinked'), 'cartons', 1)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a product with no master SKU cannot go on a plan (the inventory software prints its labels)';
+
   d_a := public.supplier_dispatch_create(s_a, current_date + 1, 'check',
     jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 3), jsonb_build_object('product_id', p_a2, 'cartons', 2)));
   assert (select number from public.supplier_dispatches where id = d_a) = 1, 'the first dispatch is number 1';
   select count(*) into n from public.supplier_cartons where dispatch_id = d_a;
+  assert n = 0, 'a new plan has no labels until the inventory software prints them';
+  blocked := false;
+  begin
+    perform public.supplier_labels_save(d_a, '[]'::jsonb);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nobody signed in can add labels by hand';
+  blocked := false;
+  begin
+    perform public.supplier_labels_claim(d_a);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nobody signed in can take a label run';
+
+  -- The Edge Function's part, done here by hand: claim, save what the inventory software printed, finish.
+  reset role;
+  res := public.supplier_labels_claim(d_a);
+  assert res->>'warehouse_vid' = 'spchk-1', 'labels are asked for at the supplier''s warehouse';
+  assert jsonb_array_length(res->'lines') = 2 and (select sum((l->>'need')::int) from jsonb_array_elements(res->'lines') l) = 5,
+    'one label is owed per planned carton';
+  assert (select count(*) from jsonb_array_elements(res->'lines') l where l->>'sku' in ('SPCHK-1', 'SPCHK-2')) = 2, 'each line names the inventory software''s product';
+  assert public.supplier_labels_claim(d_a) is null, 'a second run cannot take the dispatch while the first is working';
+  select jsonb_agg(to_jsonb(x)) into lab from (
+    select l.product_id, l.carton_type, l.units_per_carton as units,
+           '101' || lpad((1000 + row_number() over ())::text, 13, '0') as serial, '<svg/>' as svg
+    from public.supplier_dispatch_lines l, generate_series(1, l.cartons) g where l.dispatch_id = d_a) x;
+  n := public.supplier_labels_save(d_a, lab);
+  assert n = 5, 'the five printed labels are saved';
+  n := public.supplier_labels_save(d_a, lab);
+  assert n = 0, 'the same labels sent twice are saved once';
+  n := public.supplier_labels_save(d_a, jsonb_build_array(jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 20, 'serial', '1010000000009999', 'svg', null)));
+  assert n = 0, 'never more labels than the plan needs';
+  perform public.supplier_labels_done(d_a, null);
+  assert public.supplier_labels_claim(d_a) is null, 'nothing more is asked for once every carton has its label';
+  set local role authenticated;
+  select count(*) into n from public.supplier_cartons where dispatch_id = d_a;
   assert n = 5, 'exactly one label per planned carton';
   assert (select count(distinct barcode) from public.supplier_cartons where dispatch_id = d_a) = 5, 'every label has its own barcode';
-  assert not exists (select 1 from public.supplier_cartons where dispatch_id = d_a and barcode !~ '^9[0-9]{15}$'), 'barcodes are 16 digits starting with 9';
+  assert not exists (select 1 from public.supplier_cartons where dispatch_id = d_a and barcode !~ '^1[0-9]{15}$'), 'barcodes are the inventory software''s 16-digit numbers';
   assert (select array_agg(carton_no order by carton_no) from public.supplier_cartons where dispatch_id = d_a) = array[1, 2, 3, 4, 5], 'cartons are numbered 1 to 5';
   assert (select count(*) from public.supplier_cartons where dispatch_id = d_a and carton_type = 'T' and units = 12) = 2, 'type and units come from the product';
 
@@ -239,9 +286,12 @@ begin
 
   -- Supplier B makes its own dispatch (as B), to try cross-supplier scans.
   perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
-  perform public.supplier_products_save(s_b, '[{"name":"B Product","units_per_carton":6}]'::jsonb);
+  perform public.supplier_products_save(s_b, '[{"name":"B Product","master_code":"SPCHK-B","units_per_carton":6}]'::jsonb);
   select id into strict p_b from public.supplier_products where supplier_id = s_b;
   d_b := public.supplier_dispatch_create(s_b, current_date + 1, null, jsonb_build_array(jsonb_build_object('product_id', p_b, 'cartons', 1)));
+  reset role;
+  n := public.supplier_labels_save(d_b, jsonb_build_array(jsonb_build_object('product_id', p_b, 'carton_type', 'H', 'units', 6, 'serial', '1019999999999991', 'svg', null)));
+  set local role authenticated;
   select * into strict cb from public.supplier_cartons where dispatch_id = d_b;
   select count(*) into n from public.supplier_cartons where dispatch_id = d_a;
   assert n = 0, 'supplier B sees none of supplier A''s cartons';
@@ -287,10 +337,17 @@ begin
   end;
   assert blocked, 'a dispatch with unscanned labels cannot be closed';
 
-  -- A damaged label is reprinted: the old one is void, the new one gets the next number.
+  -- A damaged label is reprinted: the old one is void, and one new label is asked for; it gets the next number.
   perform public.supplier_carton_reprint(c2.id);
   assert (select status from public.supplier_cartons where id = c2.id) = 'void', 'the reprinted label is void';
-  assert (select count(*) from public.supplier_cartons where dispatch_id = d_a and carton_no = 6 and replaces = c2.id and status = 'issued') = 1, 'the new label is number 6';
+  reset role;
+  res := public.supplier_labels_claim(d_a);
+  assert jsonb_array_length(res->'lines') = 1 and (res->'lines'->0->>'need')::int = 1 and res->'lines'->0->>'sku' = 'SPCHK-1',
+    'one new label is owed for the reprint';
+  n := public.supplier_labels_save(d_a, jsonb_build_array(jsonb_build_object('product_id', p_a, 'carton_type', c2.carton_type, 'units', c2.units, 'serial', '1010000000002001', 'svg', null)));
+  perform public.supplier_labels_done(d_a, null);
+  set local role authenticated;
+  assert (select count(*) from public.supplier_cartons where dispatch_id = d_a and carton_no = 6 and barcode = '1010000000002001' and status = 'issued') = 1, 'the new label is number 6';
   res := public.supplier_scan(d_a, jsonb_build_array(jsonb_build_object('barcode', c2.barcode, 'at', now())));
   assert res->0->>'result' = 'void', 'a void label is refused';
   blocked := false;
@@ -301,7 +358,7 @@ begin
   assert blocked, 'a loaded carton cannot be voided';
 
   res := public.supplier_scan(d_a, (select jsonb_agg(jsonb_build_object('barcode', barcode, 'at', now()))
-                                    from public.supplier_cartons where dispatch_id = d_a and (id = c3.id or replaces = c2.id)));
+                                    from public.supplier_cartons where dispatch_id = d_a and (id = c3.id or barcode = '1010000000002001')));
   n := public.supplier_dispatch_void_unused(d_a);
   assert n = 2, 'the two unused labels are voided';
   assert not exists (select 1 from public.supplier_cartons where dispatch_id = d_a and status = 'issued'), 'every label is loaded or void';
@@ -350,14 +407,14 @@ begin
   d_c := public.supplier_dispatch_create(s_a, current_date + 2, null, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 2)));
   assert (select number from public.supplier_dispatches where id = d_c) = 2, 'the next dispatch is number 2';
   perform public.supplier_dispatch_cancel(d_c);
-  assert (select count(*) from public.supplier_cartons where dispatch_id = d_c and status = 'void') = 2, 'a cancelled plan voids its labels';
+  assert (select status from public.supplier_dispatches where id = d_c) = 'cancelled', 'a plan with nothing loaded can be cancelled';
 
   -- =====================================================================================
   -- 5. Thresholds and "Produce now"
   -- =====================================================================================
   perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
   select count(*) into n from public.supplier_products where supplier_id in (s_a, s_b);
-  assert n = 3, 'a VRPRIME admin reads every supplier''s products';
+  assert n = 4, 'a VRPRIME admin reads every supplier''s products';
   perform public.supplier_threshold_set(p_a, 150);
   reset role;
 
@@ -387,9 +444,25 @@ begin
   perform public.supplier_produce_respond(q, 'in_production');
   assert (select status from public.supplier_produce_requests where id = q) = 'in_production', 'the supplier''s answer is saved';
 
-  -- VRPRIME receives the dispatch: in transit drops to 0 and the request stays (40 < 150).
+  -- The warehouse scans the cartons in with the inventory software; the sync sees it and marks them arrived here.
   perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
-  perform public.supplier_dispatch_receive(d_a);
+  blocked := false;
+  begin
+    perform public.supplier_receive_save('[]'::jsonb);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nobody signed in can mark cartons as arrived through the sync''s door';
+  reset role;
+  res := public.supplier_receive_plan();
+  assert jsonb_array_length(res) = 1 and res->0->>'sku' = 'SPCHK-1' and jsonb_array_length(res->0->'serials') = 3,
+    'the three loaded cartons of the closed dispatch are waited for';
+  res := public.supplier_receive_save(jsonb_build_array(c1.barcode, cb.barcode, '1010000000000000'));
+  assert (res->>'marked')::int = 1 and (res->>'dispatches_received')::int = 0, 'one carton has arrived; a label that was never loaded changes nothing';
+  assert (select in_transit_units from public.supplier_stock(s_a) where product_id = p_a) = 40, 'an arrived carton is no longer in transit';
+  res := public.supplier_receive_save((select jsonb_agg(barcode) from public.supplier_cartons where dispatch_id = d_a and status = 'loaded'));
+  assert (res->>'marked')::int = 2 and (res->>'dispatches_received')::int = 1, 'the rest arrive and the dispatch completes by itself';
+  assert (select status from public.supplier_dispatches where id = d_a) = 'received', 'the dispatch is received';
+  set local role authenticated;
   assert (select in_transit_units from public.supplier_stock(s_a) where product_id = p_a) = 0, 'a received dispatch is no longer in transit';
   reset role;
   update public.inventory_stock set pieces = 500 where code = 'SPCHK-1' and warehouse_id = w_main;

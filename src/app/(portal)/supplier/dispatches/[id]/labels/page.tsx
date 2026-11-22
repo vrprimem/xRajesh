@@ -6,7 +6,7 @@ import { PrintButton } from "@/components/supplier/print-button";
 import { PageTitle, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
 import { formatDate, formatNumber } from "@/lib/format";
-import { loadDispatch } from "@/server/supplier-data";
+import { loadDispatch, loadLabelPictures } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "Labels" };
 
@@ -33,6 +33,7 @@ export default async function LabelsPage({ params, searchParams }: { params: Pro
   const pages = Math.max(1, Math.ceil(pool.length / BATCH));
   const page = Math.min(pages, Math.max(1, Number(typeof sp.batch === "string" ? sp.batch : "1") || 1));
   const shown = pool.slice((page - 1) * BATCH, page * BATCH);
+  const pictures = await loadLabelPictures(shown.map((c) => c.id));
   const base = `/supplier/dispatches/${id}`;
   const query = (batch: number) => `${base}/labels?${all ? "show=all&" : ""}batch=${batch}`;
   const open = dispatch.status === "planned" || dispatch.status === "loading";
@@ -69,14 +70,14 @@ export default async function LabelsPage({ params, searchParams }: { params: Pro
             : null}
         </div>
         <p className="t-caption mb-3">
-          Each label is one carton and can be scanned once. Label size 100 × 75 mm, one per page: in the print window choose that paper size and no margins. A solid black band is a hard carton; a dashed frame is a 2-ply carton.
+          These are VRPRIME&apos;s own carton labels: the warehouse scans the same barcode when the carton arrives. Each label is one carton and can be scanned once. Label size 100 × 75 mm, one per page: in the print window choose that paper size and no margins. A solid black band is a hard carton; a dashed frame is a 2-ply carton.
           {open ? " A damaged label: use Reprint on the dispatch page, which voids the old number." : " This dispatch is closed: printing is for reference only."}
         </p>
       </div>
       {shown.length ? (
         <div className="vr-label-sheet">
           {shown.map((c) => (
-            <Label key={c.id} carton={c} dispatchNo={dispatch.number} due={formatDate(dispatch.due_on)} />
+            <Label key={c.id} carton={{ ...c, label_svg: pictures.get(c.id) ?? null }} dispatchNo={dispatch.number} due={formatDate(dispatch.due_on)} />
           ))}
         </div>
       ) : (

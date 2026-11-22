@@ -106,7 +106,7 @@ export async function createDispatch(supplierId: unknown, input: unknown): Promi
   const { data, error } = await db.rpc("supplier_dispatch_create", { p_supplier: supplier, p_due: parsed.data.due, p_note: parsed.data.note, p_lines: parsed.data.lines });
   if (error) return failed(error, "create the dispatch");
   refresh();
-  return { ok: true, message: "Dispatch created. Its labels are ready to print.", data: data as string };
+  return { ok: true, message: "Dispatch created. Its labels are being made by the inventory software.", data: data as string };
 }
 
 /**
@@ -147,17 +147,18 @@ export async function voidCarton(cartonId: unknown, reason: unknown): Promise<Ac
   return step("supplier_carton_void", { p_carton: carton, p_reason: typeof reason === "string" ? reason.slice(0, 200) : "" }, "void the label", "Label voided");
 }
 
-/** Voids a damaged label and issues a new one for the same carton. Returns the new label’s id, to print it. */
-export async function reprintCarton(cartonId: unknown): Promise<ActionResult<string>> {
-  const who = await actor();
-  if (!who) return NOT_SIGNED_IN;
+/** Voids a damaged label and asks the inventory software for a new one for the same carton. */
+export async function reprintCarton(cartonId: unknown): Promise<ActionResult> {
   const carton = id(cartonId);
   if (!carton) return NOT_ALLOWED;
-  const db = await supplierDb();
-  const { data, error } = await db.rpc("supplier_carton_reprint", { p_carton: carton });
-  if (error) return failed(error, "reprint the label");
-  refresh();
-  return { ok: true, message: "Old label voided. Print the new one.", data: data as string };
+  return step("supplier_carton_reprint", { p_carton: carton }, "reprint the label", "Old label voided. The new one is being made and appears here in a few seconds.");
+}
+
+/** "Try again": asks the inventory software for the labels a dispatch is still missing. */
+export async function requestLabels(dispatchId: unknown): Promise<ActionResult> {
+  const dispatch = id(dispatchId);
+  if (!dispatch) return NOT_ALLOWED;
+  return step("supplier_labels_request", { p_dispatch: dispatch }, "ask for the labels", "Asking the inventory software for the labels. This takes a few seconds.");
 }
 
 export async function voidUnusedLabels(dispatchId: unknown): Promise<ActionResult> {

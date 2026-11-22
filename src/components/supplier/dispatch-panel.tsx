@@ -8,8 +8,8 @@ import { Card, Chip, SectionHead, buttonClass } from "@/components/ui";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/format";
 import { safeError } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/client";
-import { CARTON_TYPE_LABEL, DISPATCH_STATUS_LABEL, dispatchCounts, pendingKey, readPending, type CartonType, type DispatchStatus } from "@/lib/supplier";
-import { cancelDispatch, closeDispatch, receiveDispatch, reprintCarton, setDispatchPhoto, voidCarton, voidUnusedLabels } from "@/server/actions/supplier";
+import { CARTON_TYPE_LABEL, DISPATCH_STATUS_LABEL, dispatchCounts, labelsOwed, pendingKey, readPending, type CartonType, type DispatchStatus } from "@/lib/supplier";
+import { cancelDispatch, closeDispatch, receiveDispatch, reprintCarton, requestLabels, setDispatchPhoto, voidCarton, voidUnusedLabels } from "@/server/actions/supplier";
 import type { ActionResult } from "@/lib/types";
 import type { DispatchDetail } from "@/server/supplier-data";
 
@@ -51,6 +51,10 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
 
   const counts = dispatchCounts(lines, cartons);
   const open = d.status === "planned" || d.status === "loading";
+  // Labels the inventory software has still to make (a new plan starts with none; a reprint owes one).
+  const owed = open ? labelsOwed(lines, cartons) : 0;
+  const made = counts.planned - owed;
+  const arrived = cartons.filter((c) => c.inbound_status === "received").length;
   const supplierSide = who !== "vrprime";
   const run = (action: () => Promise<ActionResult>, confirmText?: string) => {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -60,10 +64,9 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
   };
 
   const reprint = (cartonId: string, no: number) => {
-    if (!window.confirm(`Reprint label ${no}? The old label becomes void and a new one is issued.`)) return;
+    if (!window.confirm(`Reprint label ${no}? The old label becomes void and the inventory software makes a new one.`)) return;
     startTransition(async () => {
-      const result = await reprintCarton(cartonId);
-      if (toast.result(result) && result.ok && result.data) router.push(`${base}/${d.id}/labels?carton=${result.data}`);
+      if (toast.result(await reprintCarton(cartonId))) window.setTimeout(() => router.refresh(), 5000);
     });
   };
 
@@ -99,6 +102,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
   const shownCartons = showVoid ? cartons : cartons.filter((c) => c.status !== "void");
   const steps = [
     { done: counts.loaded > 0, text: "At least one carton is scanned" },
+    ...(owed > 0 ? [{ done: false, text: `${formatNumber(owed)} ${owed === 1 ? "label has" : "labels have"} not been made yet` }] : []),
     { done: counts.left === 0, text: counts.left ? `${formatNumber(counts.left)} ${counts.left === 1 ? "label is" : "labels are"} not scanned: scan, or void if unused` : "Every label is scanned or void" },
     { done: Boolean(d.vehicle_photo_path), text: "Photo of the loaded vehicle is attached" },
   ];
@@ -122,7 +126,33 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
         <p className="mt-3 text-[13px]">
           <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} cartons scanned · <span className="tabular-nums">{formatNumber(counts.units)}</span> units loaded
           {counts.voided ? ` · ${formatNumber(counts.voided)} ${counts.voided === 1 ? "label" : "labels"} void` : ""}
+          {!open && d.status !== "cancelled" && counts.loaded ? ` · ${formatNumber(arrived)} of ${formatNumber(counts.loaded)} scanned in at VRPRIME` : ""}
         </p>
+
+        {owed > 0 ? (
+          <div className="mt-3 rounded-[12px] border border-warn bg-warn-soft px-3 py-2.5" role="status">
+            <p className="text-[13px] font-semibold">
+              Labels: {formatNumber(made)} of {formatNumber(counts.planned)} made by the VRPRIME inventory software
+            </p>
+            <p className="mt-0.5 text-[13px]">
+              {d.labels_error
+                ? `It stopped: ${d.labels_error}`
+                : d.labels_run_at
+                  ? "They are being made now. This takes a few seconds for every 50 labels."
+                  : "The rest have not been asked for yet."}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" disabled={pending} onClick={() => router.refresh()} className={buttonClass("row")}>
+                Refresh
+              </button>
+              {supplierSide && (d.labels_error || !d.labels_run_at) ? (
+                <button type="button" disabled={pending} onClick={() => run(() => requestLabels(d.id))} className={buttonClass("row")}>
+                  Try again
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {open && supplierSide ? (
           <div className="mt-4 flex flex-wrap gap-2">
@@ -176,7 +206,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
 
       {d.status === "closed" && who === "vrprime" ? (
         <Card className="g-pad">
-          <SectionHead title="Received at VRPRIME?" sub="Until the inbound scans can be matched carton by carton, mark the dispatch received here. Its units then stop counting as in transit." />
+          <SectionHead title="Received at VRPRIME?" sub="Cartons are marked arrived by themselves when the warehouse scans them in with the inventory software (checked every 30 minutes). Use this only if a dispatch arrived and its cartons will not be scanned." />
           <button type="button" disabled={pending} onClick={() => run(() => receiveDispatch(d.id), "Mark this dispatch as received?")} className={buttonClass("primary")}>
             Mark as received
           </button>
@@ -224,7 +254,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
         <div className="g-pad pb-0">
           <SectionHead
             title="Labels"
-            sub={`${formatNumber(cartons.length)} issued in all: every one is scanned, void, or still to scan.`}
+            sub={`${formatNumber(cartons.length)} made by the VRPRIME inventory software: every one is loaded, void, or still to scan.`}
             action={
               counts.voided ? (
                 <button type="button" onClick={() => setShowVoid((v) => !v)} className={buttonClass("row")}>
@@ -257,7 +287,7 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
                 <td>{CARTON_TYPE_LABEL[c.carton_type]}</td>
                 <td className="font-mono text-[12px]">{c.barcode}</td>
                 <td>
-                  {c.status === "loaded" ? <Chip tone="ok">Scanned{c.loaded_at ? ` ${formatDateTime(c.loaded_at)}` : ""}</Chip> : c.status === "void" ? <Chip tone="bad">Void{c.void_reason ? `: ${c.void_reason}` : ""}</Chip> : <Chip>To scan</Chip>}
+                  {c.inbound_status === "received" ? <Chip tone="ok">Arrived at VRPRIME</Chip> : c.status === "loaded" ? <Chip tone="info">Loaded{c.loaded_at ? ` ${formatDateTime(c.loaded_at)}` : ""}</Chip> : c.status === "void" ? <Chip tone="bad">Void{c.void_reason ? `: ${c.void_reason}` : ""}</Chip> : <Chip>To scan</Chip>}
                 </td>
                 {open && supplierSide ? (
                   <td className="whitespace-nowrap text-right">

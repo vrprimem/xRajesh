@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addPending,
-  checkDigit,
   cleanBarcode,
   code128Svg,
   code128Values,
@@ -10,26 +9,29 @@ import {
   dispatchCounts,
   dropAnswered,
   isCartonBarcode,
+  labelsOwed,
   parseProductsTable,
+  plainSvg,
   readPending,
   suggestedUnits,
 } from "./supplier.ts";
 
-test("check digit: weights 3,1 from the right, as the database makes it", () => {
-  // 9 followed by the sequence number 1, padded to 14 digits: the first barcode the database issues.
-  assert.equal(checkDigit("900000000000001"), 0);
-  assert.equal(checkDigit("900000000000002"), 7);
-  // The retail example 400638133393 -> 1 (EAN-13 uses the same rule).
-  assert.equal(checkDigit("400638133393"), 1);
+test("a carton barcode is the inventory software's: 16 digits starting with 1", () => {
+  assert.equal(isCartonBarcode("1010001071105027"), true);
+  assert.equal(isCartonBarcode("9000000000000010"), false, "a number the portal used to make up");
+  assert.equal(isCartonBarcode("101000107110502"), false, "too short");
+  assert.equal(isCartonBarcode("10100010711050270"), false, "too long");
+  assert.equal(isCartonBarcode("C-1-2-3-4"), false);
+  assert.equal(cleanBarcode(" 1010-0010 7110 5027\n"), "1010001071105027");
 });
 
-test("a carton barcode is 16 digits, starts with 9, and its last digit checks", () => {
-  assert.equal(isCartonBarcode("9000000000000010"), true);
-  assert.equal(isCartonBarcode("9000000000000011"), false, "wrong check digit");
-  assert.equal(isCartonBarcode("9000000000000100"), false, "two digits swapped");
-  assert.equal(isCartonBarcode("1010001071105027"), false, "the inventory software's own number is not ours");
-  assert.equal(isCartonBarcode("900000000000001"), false, "too short");
-  assert.equal(cleanBarcode(" 9000-0000 0000 0010\n"), "9000000000000010");
+test("the label's barcode picture is used only if it is a plain picture", () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 5"><rect width="2" height="5"/></svg>';
+  assert.equal(plainSvg(svg), svg);
+  assert.equal(plainSvg(null), null);
+  assert.equal(plainSvg('<svg onload="x()"></svg>'), null);
+  assert.equal(plainSvg("<svg><script>1</script></svg>"), null);
+  assert.equal(plainSvg("<p>no</p>"), null);
 });
 
 test("Code 128: every pattern is 11 modules, the values and checksum are right", () => {
@@ -121,6 +123,18 @@ test("dispatch counts: planned from the plan, the rest from the labels, split by
   assert.equal(counts.left, 2);
   assert.equal(counts.voided, 1);
   assert.equal(counts.units, 96);
+});
+
+test("labels owed: planned less made; a reprint is owed again, an unused void is not", () => {
+  const lines = [
+    { product_id: "a", carton_type: "H" as const, cartons: 3 },
+    { product_id: "b", carton_type: "T" as const, cartons: 2 },
+  ];
+  const label = (product_id: string, carton_type: "H" | "T", status: "issued" | "loaded" | "void", void_reason: string | null = null) => ({ product_id, carton_type, status, void_reason });
+  assert.equal(labelsOwed(lines, []), 5, "nothing made yet");
+  assert.equal(labelsOwed(lines, [label("a", "H", "issued"), label("a", "H", "loaded")]), 3);
+  assert.equal(labelsOwed(lines, [label("a", "H", "issued"), label("a", "H", "loaded"), label("a", "H", "void", "reprinted"), label("b", "T", "issued"), label("b", "T", "void", "not used")]), 1, "the reprint is still owed");
+  assert.equal(labelsOwed(lines, [label("a", "H", "issued"), label("a", "H", "issued"), label("a", "H", "issued"), label("a", "H", "issued"), label("b", "T", "issued"), label("b", "T", "issued")]), 0, "never negative");
 });
 
 test("the waiting list: one entry per carton, answered scans leave, bad storage is an empty list", () => {

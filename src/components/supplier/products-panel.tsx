@@ -127,7 +127,7 @@ export function ProductsPanel({ supplierId, products, canEdit }: { supplierId: s
               <Field label="Product name" htmlFor="sp-name" required hint={form.editing ? "The name identifies the product and cannot be changed here." : undefined}>
                 <input id="sp-name" className="input" maxLength={200} value={form.name} disabled={form.editing} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </Field>
-              <Field label="VRPRIME master SKU" htmlFor="sp-master" hint="The code VRPRIME uses for this product. Stock at VRPRIME shows only once this is set.">
+              <Field label="VRPRIME master SKU" htmlFor="sp-master" hint="The code VRPRIME uses for this product. Needed before it can go on a dispatch: labels and stock both come from it.">
                 <input id="sp-master" className="input" maxLength={200} autoCapitalize="characters" value={form.master_code} onChange={(e) => setForm({ ...form, master_code: e.target.value })} />
               </Field>
               <Field label="Category" htmlFor="sp-cat" required>
