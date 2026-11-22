@@ -7,7 +7,10 @@ import { Card, Chip, Field, buttonClass } from "@/components/ui";
 import { SUPPLIER_ROLES, type SupplierRole } from "@/lib/types";
 import { createStaffLogin, createSupplier, createSupplierLogin, resetSupplierPassword, setStaffLoginActive, setSupplierLoginActive, updateSupplier } from "@/server/actions/supplier";
 
-export const SUPPLIER_ROLE_LABEL: Record<SupplierRole, string> = { supplier_owner: "Supplier owner", supplier_scanner: "Warehouse person (scan only)" };
+export const SUPPLIER_ROLE_LABEL: Record<SupplierRole, string> = {
+  supplier_owner: "Supplier owner / manager (everything in his portal)",
+  supplier_scanner: "Warehouse person (labels and scanning only)",
+};
 
 /** Owner only: add a supplier and say which VRPRIME warehouse receives its goods. */
 export function AddSupplier({ warehouses }: { warehouses: { id: string; name: string }[] }) {
@@ -95,7 +98,10 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="t-card-title">Logins</p>
-          <p className="t-caption mt-0.5">People at {supplierName} who can sign in. They see this supplier&apos;s portal only.</p>
+          <p className="t-caption mt-0.5">
+            People at {supplierName} who can sign in. They see this supplier&apos;s portal only. The owner / manager answers send plans and makes dispatches; a
+            warehouse person prints labels and scans cartons.
+          </p>
         </div>
         {open ? null : (
           <button type="button" onClick={() => setOpen(true)} className={buttonClass("outline")}>
@@ -237,7 +243,10 @@ export function StaffLogins({ logins, me }: { logins: StaffLogin[]; me: string }
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="t-card-title">VRPRIME logins</p>
-          <p className="t-caption mt-0.5">Your own people. They see every supplier. Supplier logins are added on each supplier&apos;s page.</p>
+          <p className="t-caption mt-0.5">
+            VRPRIME&apos;s own people only: they see every supplier and all of VRPRIME&apos;s stock, and they never get a supplier&apos;s Accept buttons. A supplier&apos;s
+            people (Rajesh and his staff) are added on that supplier&apos;s page: Suppliers, then the supplier, then Logins.
+          </p>
         </div>
         {open ? null : (
           <button type="button" onClick={() => setOpen(true)} className={buttonClass("primary")}>
@@ -301,7 +310,7 @@ export function StaffLogins({ logins, me }: { logins: StaffLogin[]; me: string }
             <Field label="Email" htmlFor="st-email" required error={errors.email} hint="They sign in with this.">
               <input id="st-email" className="input" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </Field>
-            <Field label="Role" htmlFor="st-role" required hint="An owner can also manage logins and add suppliers.">
+            <Field label="Role" htmlFor="st-role" required hint="Both are VRPRIME roles. An owner can also manage logins and add suppliers. Never use these for a supplier's people.">
               <select id="st-role" className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "owner" | "admin" })}>
                 <option value="admin">Admin</option>
                 <option value="owner">Owner</option>
