@@ -41,6 +41,11 @@ begin
   insert into public.warehouses (name, vrprime_id) values ('SP Check Main', 'spchk-1') returning id into w_main;
   insert into public.warehouses (name, vrprime_id) values ('SP Check Other', 'spchk-2') returning id into w_other;
 
+  -- On a database with no login yet, the first login made becomes the owner by itself. Make that a throwaway one, so
+  -- the check also runs before the real owner exists (it is rolled back with everything else).
+  insert into auth.users (id, instance_id, aud, role, email) values
+    (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'sp-first@example.test');
+
   insert into auth.users (id, instance_id, aud, role, email) values
     (u_adm, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'sp-adm@example.test'),
     (u_raj, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'sp-raj@example.test'),
