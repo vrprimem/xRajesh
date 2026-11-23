@@ -3,14 +3,14 @@ import Link from "next/link";
 import { DispatchList, MonthCartons } from "@/components/supplier/dispatch-list";
 import { PageTitle, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
-import { loadDispatches } from "@/server/supplier-data";
+import { loadDispatches, loadProductPhotos } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "Dispatches" };
 
 export default async function SupplierDispatchesPage() {
   const user = await requirePortalUser();
   const owner = user.role === "supplier_owner";
-  const dispatches = await loadDispatches(user.supplierId);
+  const [dispatches, photos] = await Promise.all([loadDispatches(user.supplierId), loadProductPhotos(user.supplierId)]);
   return (
     <div className="flex flex-col gap-4">
       <PageTitle
@@ -25,7 +25,7 @@ export default async function SupplierDispatchesPage() {
         }
       />
       <MonthCartons dispatches={dispatches} />
-      <DispatchList dispatches={dispatches} base="/supplier/dispatches" emptyBody={owner ? "Create a dispatch plan: its labels are made at once, one per carton." : "The owner has not planned a dispatch yet."} />
+      <DispatchList dispatches={dispatches} base="/supplier/dispatches" who={owner ? "owner" : "scanner"} photos={photos} emptyBody={owner ? "Create a dispatch plan: its labels are made at once, one per carton." : "The owner has not planned a dispatch yet."} />
     </div>
   );
 }

@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { DispatchStatusChip } from "@/components/supplier/dispatch-panel";
-import { Card, EmptyState } from "@/components/ui";
-import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
-import { CARTON_TYPE_LABEL, dispatchCounts } from "@/lib/supplier";
+import { WithPhoto } from "@/components/supplier/product-photo";
+import { Card, EmptyState, buttonClass } from "@/components/ui";
+import { arrivalOf, nextStep, productCartons, stageOf, type Who } from "@/lib/dispatch-view";
+import { dueLabel, formatDate, formatNumber, noun, todayIST } from "@/lib/format";
+import { istDay } from "@/lib/report";
+import { CARTON_TYPE_LABEL, dispatchCounts, labelsOwed } from "@/lib/supplier";
 import type { DispatchSummary } from "@/server/supplier-data";
 
 /** Cartons sent this month by carton type, and the units: closed and received dispatches only. */
@@ -29,53 +32,169 @@ export function MonthCartons({ dispatches }: { dispatches: DispatchSummary[] }) 
   );
 }
 
-/** The dispatches, newest first, each with cartons scanned against planned by carton type. */
-export function DispatchList({ dispatches, base, emptyBody }: { dispatches: DispatchSummary[]; base: string; emptyBody: string }) {
+function Bar({ value, max, label }: { value: number; max: number; label: string }) {
+  const pct = max ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  return (
+    <div className="h-3 overflow-hidden rounded-[3px] bg-panel2" role="progressbar" aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} aria-label={label}>
+      <div className={`h-full ${max > 0 && value >= max ? "bg-ok" : "vr-bar"}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+type CardProps = { d: DispatchSummary; base: string; who: Who; photos: Record<string, string>; warehouse: string; today: string };
+
+/** One dispatch: when it is due or how long it has been on the road, its progress, its products, and what to do next. */
+function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
+  const stage = stageOf(d.status);
+  const c = dispatchCounts(d.lines, d.cartons);
+  const owed = stage === "to_load" ? labelsOwed(d.lines, d.cartons) : 0;
+  const arrival = arrivalOf(d, today);
+  const step = nextStep(d, who);
+  const href = `${base}/${d.id}`;
+  const missing = arrival ? arrival.loaded - arrival.arrived - arrival.rejected : 0;
+  const types = (["H", "T"] as const).filter((t) => c.byType[t].planned > 0);
+
+  return (
+    <li className="sp-card g-pad flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link href={href} className="focus-ring rounded-[6px] text-[20px] font-extrabold underline-offset-4 hover:underline">
+          Dispatch {d.number}
+        </Link>
+        <DispatchStatusChip status={d.status} />
+      </div>
+
+      {stage === "to_load" ? (
+        <div className="flex flex-col gap-1.5">
+          <p className={d.due_on < today ? "text-[15px] font-semibold text-bad" : "t-caption"}>{dueLabel(d.due_on, today)}</p>
+          <Bar value={c.loaded} max={c.planned} label={`Cartons scanned on dispatch ${d.number}`} />
+          <p className="text-[15px]">
+            <b className="tabular-nums">{formatNumber(c.loaded)}</b> of {formatNumber(c.planned)} {noun(c.planned, "carton")} scanned
+            {types.length ? <span className="text-muted"> · {types.map((t) => `${CARTON_TYPE_LABEL[t]} ${c.byType[t].loaded}/${c.byType[t].planned}`).join(" · ")}</span> : null}
+          </p>
+          {owed ? (
+            <p className={d.labels_error ? "text-[15px] font-semibold text-bad" : "t-caption"}>
+              {d.labels_error ? "Labels stopped: open the dispatch and press Try again." : `${formatNumber(owed)} ${owed === 1 ? "label is" : "labels are"} still being made by the inventory software.`}
+            </p>
+          ) : null}
+        </div>
+      ) : arrival ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="t-caption">
+            Sent {d.closed_at ? formatDate(istDay(d.closed_at), today) : "-"} ·{" "}
+            {stage === "arrived" ? `took ${arrival.days} ${noun(arrival.days, "day")}` : `${arrival.days} ${noun(arrival.days, "day")} on the road`}
+          </p>
+          <Bar value={arrival.arrived} max={arrival.loaded} label={`Cartons of dispatch ${d.number} scanned in at ${warehouse}`} />
+          <p className="text-[15px]">
+            <b className="tabular-nums">{formatNumber(arrival.arrived)}</b> of {formatNumber(arrival.loaded)} {noun(arrival.loaded, "carton")} scanned in at {warehouse}
+            {arrival.rejected ? <span className="font-semibold text-bad"> · {formatNumber(arrival.rejected)} rejected</span> : null}
+          </p>
+          {arrival.late ? (
+            <p className="tone-row tone-bad text-[15px] font-semibold">
+              On the road {arrival.days} days with {formatNumber(missing)} {noun(missing, "carton")} not scanned in yet. Check with the transporter.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {d.lines.length ? (
+        <ul className="flex flex-col gap-2 border-t border-line-soft pt-3">
+          {productCartons(d.lines).map((p) => (
+            <li key={p.product_id} className="flex items-center justify-between gap-3 text-[15px]">
+              <WithPhoto src={photos[p.product_id]} name={p.product} size={36}>
+                <span className="font-semibold">{p.product}</span>
+              </WithPhoto>
+              <span className="shrink-0 tabular-nums">
+                {formatNumber(p.cartons)} {noun(p.cartons, "carton")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        {step ? (
+          <Link href={step.to === "scan" ? `${href}/scan` : href} className={buttonClass("primary")}>
+            {step.label}
+          </Link>
+        ) : null}
+        <Link href={href} className={buttonClass("outline")}>
+          Open dispatch
+        </Link>
+      </div>
+    </li>
+  );
+}
+
+const SHOWN_ARRIVED = 6;
+
+/**
+ * The dispatches by stage: to load (soonest due first), on the way (longest on the road first), arrived (newest first,
+ * older ones folded away) and cancelled (folded away). Each is a card with its next step. `who` decides that step;
+ * `warehouse` is where the cartons are scanned in.
+ */
+export function DispatchList({
+  dispatches,
+  base,
+  emptyBody,
+  who,
+  photos = {},
+  warehouse = "VRPRIME",
+}: {
+  dispatches: DispatchSummary[];
+  base: string;
+  emptyBody: string;
+  who: Who;
+  photos?: Record<string, string>;
+  warehouse?: string;
+}) {
   if (!dispatches.length) return <EmptyState title="No dispatches yet" body={emptyBody} />;
   const today = todayIST();
+  const of = (s: ReturnType<typeof stageOf>) => dispatches.filter((d) => stageOf(d.status) === s);
+  const groups = [
+    { id: "to-load", title: "To load", empty: "Nothing to load right now.", list: of("to_load").sort((a, b) => a.due_on.localeCompare(b.due_on) || a.number - b.number) },
+    { id: "on-the-way", title: "On the way", empty: "Nothing is on the road.", list: of("on_the_way").sort((a, b) => (a.closed_at ?? "").localeCompare(b.closed_at ?? "")) },
+    { id: "arrived", title: "Arrived", empty: "Nothing has arrived yet.", list: of("arrived").sort((a, b) => (b.received_at ?? b.closed_at ?? "").localeCompare(a.received_at ?? a.closed_at ?? "")) },
+  ];
+  const cancelled = of("cancelled");
+  const card = (d: DispatchSummary) => <DispatchCard key={d.id} d={d} base={base} who={who} photos={photos} warehouse={warehouse} today={today} />;
+  const grid = "grid gap-3 min-[700px]:grid-cols-2";
+
   return (
-    <Card className="ledger-card">
-      <table className="ledger">
-        <thead>
-          <tr>
-            <th scope="col">Dispatch</th>
-            <th scope="col">Date</th>
-            <th scope="col">Status</th>
-            <th scope="col" className="num">{CARTON_TYPE_LABEL.H}</th>
-            <th scope="col" className="num">{CARTON_TYPE_LABEL.T}</th>
-            <th scope="col" className="num">Units loaded</th>
-          </tr>
-        </thead>
-        <tbody>
-          {dispatches.map((d) => {
-            const c = dispatchCounts(d.lines, d.cartons);
-            const late = (d.status === "planned" || d.status === "loading") && d.due_on < today;
-            return (
-              <tr key={d.id}>
-                <th scope="row" className="text-left font-semibold">
-                  <Link href={`${base}/${d.id}`} className="focus-ring underline decoration-line underline-offset-4">
-                    Dispatch {d.number}
-                  </Link>
-                </th>
-                <td className={late ? "font-semibold text-bad" : ""}>
-                  {formatDate(d.due_on)}
-                  {late ? " (overdue)" : ""}
-                </td>
-                <td>
-                  <DispatchStatusChip status={d.status} />
-                </td>
-                <td className="num tabular-nums">
-                  {formatNumber(c.byType.H.loaded)} / {formatNumber(c.byType.H.planned)}
-                </td>
-                <td className="num tabular-nums">
-                  {formatNumber(c.byType.T.loaded)} / {formatNumber(c.byType.T.planned)}
-                </td>
-                <td className="num tabular-nums">{formatNumber(c.units)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </Card>
+    <div className="flex flex-col gap-5">
+      <nav aria-label="Dispatches by stage" className="flex flex-wrap gap-2">
+        {groups.map((g) => (
+          <a key={g.id} href={`#${g.id}`} className={buttonClass("row")}>
+            {g.title}
+            <span className="tabular-nums">{g.list.length}</span>
+          </a>
+        ))}
+      </nav>
+      {groups.map((g) => (
+        <section key={g.id} id={g.id} aria-labelledby={`${g.id}-title`} className="scroll-mt-40">
+          <h2 id={`${g.id}-title`} className="t-card-title mb-3">
+            {g.title} <span className="font-normal text-muted tabular-nums">{g.list.length}</span>
+          </h2>
+          {g.list.length === 0 ? (
+            <p className="t-caption">{g.empty}</p>
+          ) : (
+            <>
+              <ul className={grid}>{(g.id === "arrived" ? g.list.slice(0, SHOWN_ARRIVED) : g.list).map(card)}</ul>
+              {g.id === "arrived" && g.list.length > SHOWN_ARRIVED ? (
+                <details className="mt-3">
+                  <summary className="t-caption cursor-pointer underline underline-offset-4">Show {g.list.length - SHOWN_ARRIVED} older</summary>
+                  <ul className={`${grid} mt-3`}>{g.list.slice(SHOWN_ARRIVED).map(card)}</ul>
+                </details>
+              ) : null}
+            </>
+          )}
+        </section>
+      ))}
+      {cancelled.length ? (
+        <details>
+          <summary className="t-caption cursor-pointer underline underline-offset-4">Cancelled ({cancelled.length})</summary>
+          <ul className={`${grid} mt-3`}>{cancelled.map(card)}</ul>
+        </details>
+      ) : null}
+    </div>
   );
 }

@@ -215,10 +215,19 @@ export async function loadProduce(supplierId: string): Promise<ProduceRow[]> {
   return soft("produce requests", error, data as Raw[] | null, []).map(({ supplier_products, ...r }) => ({ ...r, product: supplier_products?.name ?? "Unknown product" }));
 }
 
-type CartonCount = { dispatch_id: string; carton_type: CartonType; status: CartonRow["status"]; units: number };
-export type DispatchSummary = DispatchRow & { lines: { carton_type: CartonType; cartons: number }[]; cartons: CartonCount[] };
+export type CartonCount = {
+  dispatch_id: string;
+  product_id: string;
+  carton_type: CartonType;
+  status: CartonRow["status"];
+  units: number;
+  void_reason: string | null;
+  inbound_status: "received" | "rejected" | null;
+  inbound_at: string | null;
+};
+export type DispatchSummary = DispatchRow & { lines: { product_id: string; product: string; carton_type: CartonType; cartons: number }[]; cartons: CartonCount[] };
 
-/** The newest dispatches with what is needed for their counts. */
+/** The newest dispatches with what is needed for their counts, their products, and how their cartons arrived. */
 export async function loadDispatches(supplierId: string, limit = 40): Promise<DispatchSummary[]> {
   const db = await supplierDb();
   const { data, error } = await db
@@ -230,11 +239,16 @@ export async function loadDispatches(supplierId: string, limit = 40): Promise<Di
   const rows = soft("dispatches", error, data as DispatchRow[] | null, []);
   if (!rows.length) return [];
   const ids = rows.map((d) => d.id);
-  const [lines, cartons] = await Promise.all([
-    db.from("supplier_dispatch_lines").select("dispatch_id, carton_type, cartons").in("dispatch_id", ids).limit(10000),
-    db.from("supplier_cartons").select("dispatch_id, carton_type, status, units").in("dispatch_id", ids).limit(100000),
+  const [lines, cartons, products] = await Promise.all([
+    db.from("supplier_dispatch_lines").select("dispatch_id, product_id, carton_type, cartons").in("dispatch_id", ids).limit(10000),
+    db.from("supplier_cartons").select("dispatch_id, product_id, carton_type, status, units, void_reason, inbound_status, inbound_at").in("dispatch_id", ids).limit(100000),
+    db.from("supplier_products").select("id, name").eq("supplier_id", supplierId).limit(5000),
   ]);
-  const lineRows = soft("dispatch lines", lines.error, lines.data as { dispatch_id: string; carton_type: CartonType; cartons: number }[] | null, []);
+  const names = new Map(((products.data ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name]));
+  const lineRows = soft("dispatch lines", lines.error, lines.data as { dispatch_id: string; product_id: string; carton_type: CartonType; cartons: number }[] | null, []).map((l) => ({
+    ...l,
+    product: names.get(l.product_id) ?? "Unknown product",
+  }));
   const cartonRows = soft("cartons", cartons.error, cartons.data as CartonCount[] | null, []);
   return rows.map((d) => ({ ...d, lines: lineRows.filter((l) => l.dispatch_id === d.id), cartons: cartonRows.filter((c) => c.dispatch_id === d.id) }));
 }

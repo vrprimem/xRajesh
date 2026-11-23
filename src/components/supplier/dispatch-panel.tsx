@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
+import { LabelGroups } from "@/components/supplier/label-groups";
 import { WithPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Card, Chip, SectionHead, buttonClass } from "@/components/ui";
@@ -10,7 +11,7 @@ import { formatDate, formatDateTime, formatNumber, noun } from "@/lib/format";
 import { safeError } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/client";
 import { CARTON_TYPE_LABEL, DISPATCH_STATUS_LABEL, dispatchCounts, labelsOwed, pendingKey, readPending, type CartonType, type DispatchStatus } from "@/lib/supplier";
-import { cancelDispatch, closeDispatch, receiveDispatch, reprintCarton, requestLabels, setDispatchPhoto, voidCarton, voidUnusedLabels } from "@/server/actions/supplier";
+import { cancelDispatch, closeDispatch, receiveDispatch, requestLabels, setDispatchPhoto, voidUnusedLabels } from "@/server/actions/supplier";
 import type { ActionResult } from "@/lib/types";
 import type { DispatchDetail } from "@/server/supplier-data";
 
@@ -47,7 +48,6 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [uploading, setUploading] = useState(false);
-  const [showVoid, setShowVoid] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
 
   const counts = dispatchCounts(lines, cartons);
@@ -61,13 +61,6 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
     if (confirmText && !window.confirm(confirmText)) return;
     startTransition(async () => {
       if (toast.result(await action())) router.refresh();
-    });
-  };
-
-  const reprint = (cartonId: string, no: number) => {
-    if (!window.confirm(`Reprint label ${no}? The old label becomes void and the inventory software makes a new one.`)) return;
-    startTransition(async () => {
-      if (toast.result(await reprintCarton(cartonId))) window.setTimeout(() => router.refresh(), 5000);
     });
   };
 
@@ -100,7 +93,6 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
     }
   };
 
-  const shownCartons = showVoid ? cartons : cartons.filter((c) => c.status !== "void");
   const steps = [
     { done: counts.loaded > 0, text: "At least one carton is scanned" },
     ...(owed > 0 ? [{ done: false, text: `${formatNumber(owed)} ${owed === 1 ? "label has" : "labels have"} not been made yet` }] : []),
@@ -278,80 +270,7 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
         </table>
       </Card>
 
-      <Card className="ledger-card">
-        <div className="g-pad pb-0">
-          <SectionHead
-            title="Labels"
-            sub={`${formatNumber(cartons.length)} made by the VRPRIME inventory software: every one is loaded, void, or still to scan.`}
-            action={
-              counts.voided ? (
-                <button type="button" onClick={() => setShowVoid((v) => !v)} className={buttonClass("row")}>
-                  {showVoid ? "Hide void labels" : `Show ${formatNumber(counts.voided)} void`}
-                </button>
-              ) : undefined
-            }
-          />
-        </div>
-        <table className="ledger">
-          <thead>
-            <tr>
-              <th scope="col" className="num">No.</th>
-              <th scope="col" className="min-w-[170px]">Product</th>
-              <th scope="col">Carton</th>
-              <th scope="col">Barcode</th>
-              <th scope="col">Status</th>
-              <th scope="col">Label</th>
-              {open && supplierSide ? (
-                <th scope="col">
-                  <span className="sr-only">Actions</span>
-                </th>
-              ) : null}
-            </tr>
-          </thead>
-          <tbody>
-            {shownCartons.slice(0, 600).map((c) => (
-              <tr key={c.id} className={c.status === "void" ? "opacity-60" : ""}>
-                <td className="num tabular-nums">{c.carton_no}</td>
-                <th scope="row" className="text-left font-normal">{c.product}</th>
-                <td>{CARTON_TYPE_LABEL[c.carton_type]}</td>
-                <td className="font-mono text-[14px]">{c.barcode}</td>
-                <td>
-                  {c.inbound_status === "received" ? <Chip tone="ok">Arrived at VRPRIME</Chip> : c.status === "loaded" ? <Chip tone="info">Loaded{c.loaded_at ? ` ${formatDateTime(c.loaded_at)}` : ""}</Chip> : c.status === "void" ? <Chip tone="bad">Void{c.void_reason ? `: ${c.void_reason}` : ""}</Chip> : <Chip>To scan</Chip>}
-                </td>
-                <td className="whitespace-nowrap">
-                  {c.status === "void" ? (
-                    <span className="t-caption">-</span>
-                  ) : (
-                    <>
-                      <a href={`${base}/${d.id}/labels?carton=${c.id}`} download className={buttonClass("row")} aria-label={`Download label ${c.carton_no}, 100 by 75 millimetres`}>
-                        Download
-                      </a>{" "}
-                      <a href={`${base}/${d.id}/labels?carton=${c.id}&format=a4`} download className={buttonClass("row")} aria-label={`Download label ${c.carton_no} on an A4 sheet`}>
-                        A4
-                      </a>
-                    </>
-                  )}
-                </td>
-                {open && supplierSide ? (
-                  <td className="whitespace-nowrap text-right">
-                    {c.status === "issued" ? (
-                      <>
-                        <button type="button" disabled={pending} onClick={() => reprint(c.id, c.carton_no)} className={buttonClass("row")}>
-                          Reprint
-                        </button>{" "}
-                        <button type="button" disabled={pending} onClick={() => run(() => voidCarton(c.id, "not used"), `Void label ${c.carton_no}? It can no longer be scanned.`)} className={buttonClass("row")}>
-                          Void
-                        </button>
-                      </>
-                    ) : null}
-                  </td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {shownCartons.length > 600 ? <p className="t-caption g-pad">Showing the first 600 of {formatNumber(shownCartons.length)} labels.</p> : null}
-      </Card>
+      <LabelGroups dispatchId={d.id} base={base} lines={lines} cartons={cartons} canChange={open && supplierSide} photos={photos} />
     </div>
   );
 }

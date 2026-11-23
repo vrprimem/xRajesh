@@ -56,6 +56,8 @@ declare
   ph1 text;
   ph2 text;
   stored boolean;
+  d_r uuid;
+  ids uuid[];
 begin
   insert into public.warehouses (name, vrprime_id) values ('SP Check Main', 'spchk-1') returning id into w_main;
   insert into public.warehouses (name, vrprime_id) values ('SP Check Other', 'spchk-2') returning id into w_other;
@@ -996,7 +998,82 @@ begin
   reset role;
 
   -- =====================================================================================
-  -- 9. A deactivated supplier login, a deactivated supplier, a signed-out visitor
+  -- 9. Changing the pieces in a carton: a new label with the new count replaces the old one
+  -- =====================================================================================
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  d_r := public.supplier_dispatch_create(s_a, current_date + 2, 'repack check', jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 3)));
+  reset role;
+  -- The Edge Function's part, by hand: 3 labels of 20 pieces.
+  res := public.supplier_labels_claim(d_r);
+  assert (res->'lines'->0->>'units')::int = 20 and (res->'lines'->0->>'need')::int = 3, 'three labels of 20 pieces are asked for: ' || res::text;
+  select jsonb_agg(jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 20, 'serial', '1029' || lpad(g::text, 12, '0'), 'svg', null)) into lab
+  from generate_series(1, 3) g;
+  n := public.supplier_labels_save(d_r, lab);
+  assert n = 3, 'three labels saved';
+  perform public.supplier_labels_done(d_r, null);
+  select array_agg(id order by carton_no) into ids from public.supplier_cartons where dispatch_id = d_r;
+
+  -- The warehouse person changes the third carton to 12 pieces.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  n := public.supplier_cartons_repack(array[ids[3]], 12);
+  assert n = 1, 'one label changed';
+  assert (select status = 'void' and void_reason = 'pieces changed' from public.supplier_cartons where id = ids[3]), 'its old label is void';
+  n := public.supplier_cartons_repack(array[ids[1]], 20);
+  assert n = 0, 'a label that already has the count is left as it is';
+  reset role;
+  res := public.supplier_labels_claim(d_r);
+  assert jsonb_array_length(res->'lines') = 1 and (res->'lines'->0->>'units')::int = 12 and (res->'lines'->0->>'need')::int = 1,
+    'one new label is asked for, with 12 pieces: ' || res::text;
+  assert res->'lines'->0->'weight' = 'null'::jsonb, 'a label with another count goes out with no carton weight';
+  n := public.supplier_labels_save(d_r, jsonb_build_array(jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 12, 'serial', '1029000000000099', 'svg', null)));
+  assert n = 1, 'the new label is saved';
+  perform public.supplier_labels_done(d_r, null);
+  assert (select units = 12 and replaces = ids[3] and weight_per_carton is null from public.supplier_cartons where barcode = '1029000000000099'),
+    'it holds 12 pieces and replaces the old label';
+  assert (select count(*) from public.supplier_label_requests where dispatch_id = d_r and done_carton is not null) = 1, 'the request is settled';
+  assert public.supplier_labels_claim(d_r) is null, 'nothing more is owed';
+
+  -- The owner changes the other two to 18 at once; refused cases; then giving up unused labels.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  n := public.supplier_cartons_repack(array[ids[1], ids[2]], 18);
+  assert n = 2, 'two labels changed at once';
+  blocked := false;
+  begin
+    perform public.supplier_cartons_repack(array[ids[3]], 5);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a void label cannot be changed';
+  blocked := false;
+  begin
+    perform public.supplier_cartons_repack(array[(select id from public.supplier_cartons where barcode = '1029000000000099')], 0);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a carton holds at least one piece';
+  q := (select c.id from public.supplier_cartons c where c.barcode = '1029000000000099');
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_cartons_repack(array[q], 10);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot change these labels';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  reset role;
+  assert (select (l->>'need')::int from jsonb_array_elements(public.supplier_labels_claim(d_r)->'lines') l where (l->>'units')::int = 18) = 2,
+    'two new labels of 18 pieces are owed';
+  perform public.supplier_labels_done(d_r, null);
+  set local role authenticated;
+  n := public.supplier_dispatch_void_unused(d_r);
+  assert not exists (select 1 from public.supplier_label_requests where dispatch_id = d_r and done_carton is null), 'giving up unused labels gives up the new ones not made';
+  reset role;
+  assert public.supplier_labels_claim(d_r) is null, 'and then nothing is owed';
+  assert (select cartons from public.supplier_dispatch_lines where dispatch_id = d_r) = 3, 'the plan keeps its 3 cartons';
+
+  -- =====================================================================================
+  -- 10. A deactivated supplier login, a deactivated supplier, a signed-out visitor
   -- =====================================================================================
   perform set_config('request.jwt.claims', json_build_object('sub', u_off, 'role', 'authenticated')::text, true);
   set local role authenticated;

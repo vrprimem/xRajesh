@@ -242,12 +242,13 @@ export type LabelLite = { product_id: string; carton_type: CartonType; status: "
 
 /**
  * Labels the inventory software has still to make for a plan: each line's cartons, less the labels it has. A label
- * voided for a reprint does not count (its replacement is owed); one voided as unused does. The database's rule.
+ * voided for a reprint or a change of pieces does not count (its replacement is owed); one voided as unused does. The
+ * database's rule (private.supplier_labels_needed).
  */
 export function labelsOwed(lines: { product_id: string; carton_type: CartonType; cartons: number }[], labels: LabelLite[]): number {
   let owed = 0;
   for (const l of lines) {
-    const have = labels.filter((c) => c.product_id === l.product_id && c.carton_type === l.carton_type && !(c.status === "void" && c.void_reason === "reprinted")).length;
+    const have = labels.filter((c) => c.product_id === l.product_id && c.carton_type === l.carton_type && !(c.status === "void" && (c.void_reason === "reprinted" || c.void_reason === "pieces changed"))).length;
     owed += Math.max(0, l.cartons - have);
   }
   return owed;

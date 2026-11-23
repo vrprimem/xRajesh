@@ -78,11 +78,15 @@ const DETAIL: DispatchDetail = {
   photoUrl: null,
 };
 
-const summary = (d: DispatchDetail): DispatchSummary => ({ ...d.dispatch, lines: d.lines, cartons: d.cartons.map((c) => ({ dispatch_id: d.dispatch.id, carton_type: c.carton_type, status: c.status, units: c.units })) });
+const summary = (d: DispatchDetail, arrived = 0): DispatchSummary => ({
+  ...d.dispatch,
+  lines: d.lines,
+  cartons: d.cartons.map((c, i) => ({ dispatch_id: d.dispatch.id, product_id: c.product_id, carton_type: c.carton_type, status: arrived ? ("loaded" as const) : c.status, units: c.units, void_reason: c.void_reason, inbound_status: i < arrived ? ("received" as const) : null, inbound_at: i < arrived ? "2026-11-21T06:00:00Z" : null })),
+});
 const DISPATCHES: DispatchSummary[] = [
   summary(DETAIL),
-  { ...summary(DETAIL), id: "d6", number: 6, status: "closed", due_on: "2026-11-20", closed_at: "2026-11-20T09:00:00Z" },
-  { ...summary(DETAIL), id: "d5", number: 5, status: "received", due_on: "2026-11-12", closed_at: "2026-11-12T09:00:00Z", received_at: "2026-11-13T07:00:00Z" },
+  { ...summary(DETAIL, 7), id: "d6", number: 6, status: "closed", due_on: "2026-11-18", closed_at: "2026-11-18T09:00:00Z" },
+  { ...summary(DETAIL, 12), id: "d5", number: 5, status: "received", due_on: "2026-11-12", closed_at: "2026-11-12T09:00:00Z", received_at: "2026-11-13T07:00:00Z" },
   { ...summary(DETAIL), id: "d4", number: 4, status: "planned", due_on: "2026-11-18", cartons: [] },
 ];
 
@@ -156,7 +160,7 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
             <ProduceList rows={PRODUCE} canAnswer photos={PHOTOS} />
           </Card>
           <MonthCartons dispatches={DISPATCHES} />
-          <DispatchList dispatches={DISPATCHES} base="/dev/supplier" emptyBody="" />
+          <DispatchList dispatches={DISPATCHES} base="/dev/supplier" who={who} photos={PHOTOS} warehouse="Bhiwandi" emptyBody="" />
           <StockTable rows={STOCK} canSetMin={false} />
         </div>
       ) : null}

@@ -34,6 +34,7 @@ tables without Row Level Security or drops things: the files switch RLS on thems
 12. `20261123111000_supplier_supplies_money.sql`
 13. `20261123112000_supplier_production.sql`
 14. `20261123113000_product_photos.sql`
+15. `20261123114000_carton_pieces.sql`
 
 Then tell the database where its functions live. Run this with your own project ref in place of `<project-ref>`:
 

@@ -101,7 +101,7 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
       <StockTable rows={stock} warehouse={warehouse} canSetMin />
 
       <MonthCartons dispatches={dispatches} />
-      <DispatchList dispatches={dispatches} base={`${base}/dispatches`} emptyBody="Create a dispatch plan here, or let the supplier create one." />
+      <DispatchList dispatches={dispatches} base={`${base}/dispatches`} who="vrprime" photos={photos} warehouse={warehouse} emptyBody="Create a dispatch plan here, or let the supplier create one." />
 
       {isOwner(user) ? <SupplierLogins supplierId={id} supplierName={supplier.name} logins={loginRows.map((l) => ({ ...l, email: emails.get(l.id) ?? null }))} /> : null}
     </div>
