@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DispatchStatusChip } from "@/components/supplier/dispatch-panel";
+import { CheckIcon, CloseIcon, TruckIcon } from "@/components/icons";
 import { WithPhoto } from "@/components/supplier/product-photo";
 import { Card, EmptyState, buttonClass } from "@/components/ui";
 import { arrivalOf, nextStep, productCartons, stageOf, type Who } from "@/lib/dispatch-view";
@@ -43,6 +44,14 @@ function Bar({ value, max, label }: { value: number; max: number; label: string 
 
 type CardProps = { d: DispatchSummary; base: string; who: Who; photos: Record<string, string>; warehouse: string; today: string };
 
+/** Each stage's colour class and icon, used on its cards, pills and heading. */
+const STAGE_LOOK = {
+  to_load: { cls: "stage-load", Icon: TruckIcon },
+  on_the_way: { cls: "stage-way", Icon: TruckIcon },
+  arrived: { cls: "stage-done", Icon: CheckIcon },
+  cancelled: { cls: "stage-off", Icon: CloseIcon },
+} as const;
+
 /** One dispatch: when it is due or how long it has been on the road, its progress, its products, and what to do next. */
 function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
   const stage = stageOf(d.status);
@@ -54,8 +63,23 @@ function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
   const missing = arrival ? arrival.loaded - arrival.arrived - arrival.rejected : 0;
   const types = (["H", "T"] as const).filter((t) => c.byType[t].planned > 0);
 
+  const look = STAGE_LOOK[stage];
+  const band =
+    stage === "to_load"
+      ? `To load · ${dueLabel(d.due_on, today)}`
+      : stage === "on_the_way"
+        ? `On the way · ${arrival?.days ?? 0} ${noun(arrival?.days ?? 0, "day")} on the road`
+        : stage === "arrived"
+          ? `Arrived · took ${arrival?.days ?? 0} ${noun(arrival?.days ?? 0, "day")}`
+          : "Cancelled";
+
   return (
-    <li className="sp-card g-pad flex min-w-0 flex-col gap-3">
+    <li className="sp-card flex min-w-0 flex-col overflow-hidden">
+      <div className={`stage-band ${look.cls}`}>
+        <look.Icon className="h-5 w-5 shrink-0" />
+        <span className="min-w-0">{band}</span>
+      </div>
+      <div className="g-pad flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Link href={href} className="focus-ring rounded-[6px] text-[20px] font-extrabold underline-offset-4 hover:underline">
           Dispatch {d.number}
@@ -65,7 +89,6 @@ function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
 
       {stage === "to_load" ? (
         <div className="flex flex-col gap-1.5">
-          <p className={d.due_on < today ? "text-[15px] font-semibold text-bad" : "t-caption"}>{dueLabel(d.due_on, today)}</p>
           <Bar value={c.loaded} max={c.planned} label={`Cartons scanned on dispatch ${d.number}`} />
           <p className="text-[15px]">
             <b className="tabular-nums">{formatNumber(c.loaded)}</b> of {formatNumber(c.planned)} {noun(c.planned, "carton")} scanned
@@ -79,10 +102,7 @@ function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
         </div>
       ) : arrival ? (
         <div className="flex flex-col gap-1.5">
-          <p className="t-caption">
-            Sent {d.closed_at ? formatDate(istDay(d.closed_at), today) : "-"} ·{" "}
-            {stage === "arrived" ? `took ${arrival.days} ${noun(arrival.days, "day")}` : `${arrival.days} ${noun(arrival.days, "day")} on the road`}
-          </p>
+          <p className="t-caption">Sent {d.closed_at ? formatDate(istDay(d.closed_at), today) : "-"}</p>
           <Bar value={arrival.arrived} max={arrival.loaded} label={`Cartons of dispatch ${d.number} scanned in at ${warehouse}`} />
           <p className="text-[15px]">
             <b className="tabular-nums">{formatNumber(arrival.arrived)}</b> of {formatNumber(arrival.loaded)} {noun(arrival.loaded, "carton")} scanned in at {warehouse}
@@ -121,6 +141,7 @@ function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
           Open dispatch
         </Link>
       </div>
+      </div>
     </li>
   );
 }
@@ -151,9 +172,9 @@ export function DispatchList({
   const today = todayIST();
   const of = (s: ReturnType<typeof stageOf>) => dispatches.filter((d) => stageOf(d.status) === s);
   const groups = [
-    { id: "to-load", title: "To load", empty: "Nothing to load right now.", list: of("to_load").sort((a, b) => a.due_on.localeCompare(b.due_on) || a.number - b.number) },
-    { id: "on-the-way", title: "On the way", empty: "Nothing is on the road.", list: of("on_the_way").sort((a, b) => (a.closed_at ?? "").localeCompare(b.closed_at ?? "")) },
-    { id: "arrived", title: "Arrived", empty: "Nothing has arrived yet.", list: of("arrived").sort((a, b) => (b.received_at ?? b.closed_at ?? "").localeCompare(a.received_at ?? a.closed_at ?? "")) },
+    { id: "to-load", cls: "stage-load", title: "To load", empty: "Nothing to load right now.", list: of("to_load").sort((a, b) => a.due_on.localeCompare(b.due_on) || a.number - b.number) },
+    { id: "on-the-way", cls: "stage-way", title: "On the way", empty: "Nothing is on the road.", list: of("on_the_way").sort((a, b) => (a.closed_at ?? "").localeCompare(b.closed_at ?? "")) },
+    { id: "arrived", cls: "stage-done", title: "Arrived", empty: "Nothing has arrived yet.", list: of("arrived").sort((a, b) => (b.received_at ?? b.closed_at ?? "").localeCompare(a.received_at ?? a.closed_at ?? "")) },
   ];
   const cancelled = of("cancelled");
   const card = (d: DispatchSummary) => <DispatchCard key={d.id} d={d} base={base} who={who} photos={photos} warehouse={warehouse} today={today} />;
@@ -163,7 +184,8 @@ export function DispatchList({
     <div className="flex flex-col gap-5">
       <nav aria-label="Dispatches by stage" className="flex flex-wrap gap-2">
         {groups.map((g) => (
-          <a key={g.id} href={`#${g.id}`} className={buttonClass("row")}>
+          <a key={g.id} href={`#${g.id}`} className={`stage-pill focus-ring ${g.cls}`}>
+            <span className="stage-dot" aria-hidden />
             {g.title}
             <span className="tabular-nums">{g.list.length}</span>
           </a>
@@ -171,7 +193,8 @@ export function DispatchList({
       </nav>
       {groups.map((g) => (
         <section key={g.id} id={g.id} aria-labelledby={`${g.id}-title`} className="scroll-mt-40">
-          <h2 id={`${g.id}-title`} className="t-card-title mb-3">
+          <h2 id={`${g.id}-title`} className={`t-card-title mb-3 flex items-center gap-2 ${g.cls}`}>
+            <span className="stage-dot" aria-hidden />
             {g.title} <span className="font-normal text-muted tabular-nums">{g.list.length}</span>
           </h2>
           {g.list.length === 0 ? (

@@ -262,12 +262,12 @@ export const BarsIcon = (p: IconProps) => (
   </Icon>
 );
 
-/** The VR Prime mark: a bold black V on a safety-yellow tile, the same in light and dark. */
-export function Logo({ size = 30, className = "" }: { size?: number; className?: string }) {
+/** The VR Prime mark: a bold white V on an indigo tile, the same in light and dark; `onBrand` swaps them for the indigo band. */
+export function Logo({ size = 30, className = "", onBrand = false }: { size?: number; className?: string; onBrand?: boolean }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" className={`shrink-0 ${className}`}>
-      <rect width="64" height="64" rx="14" fill={LOGO.tile} />
-      <path d={LOGO.v} fill="none" stroke={LOGO.ink} strokeWidth={LOGO.stroke} strokeLinecap="square" strokeLinejoin="miter" />
+      <rect width="64" height="64" rx="16" fill={onBrand ? LOGO.onBrandTile : LOGO.tile} />
+      <path d={LOGO.v} fill="none" stroke={onBrand ? LOGO.onBrandInk : LOGO.ink} strokeWidth={LOGO.stroke} strokeLinecap="square" strokeLinejoin="miter" />
     </svg>
   );
 }

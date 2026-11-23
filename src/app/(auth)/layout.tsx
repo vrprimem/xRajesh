@@ -4,7 +4,7 @@ import { Logo } from "@/components/icons";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { readThemeMode, THEME_COOKIE } from "@/lib/theme-mode";
 
-/** Sign-in and change-password: the name on the black band, and the form on a card below it. */
+/** Sign-in and change-password: the name on the indigo band, and the form on a card below it. */
 export default async function AuthLayout({ children }: { children: ReactNode }) {
   const theme = readThemeMode((await cookies()).get(THEME_COOKIE)?.value);
   return (
@@ -14,7 +14,7 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
           <div className="absolute right-4 top-4">
             <ThemeSwitch initial={theme} />
           </div>
-          <Logo size={64} />
+          <Logo size={64} onBrand />
           <p className="vr-wordmark mt-5">VRPRIME</p>
           <p className="vr-kicker mt-2">Supplier portal</p>
         </div>

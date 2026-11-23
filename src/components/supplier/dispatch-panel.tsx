@@ -15,7 +15,8 @@ import { cancelDispatch, closeDispatch, receiveDispatch, requestLabels, setDispa
 import type { ActionResult } from "@/lib/types";
 import type { DispatchDetail } from "@/server/supplier-data";
 
-const STATUS_TONE: Record<DispatchStatus, "neutral" | "info" | "warn" | "ok" | "bad"> = { planned: "neutral", loading: "info", closed: "warn", received: "ok", cancelled: "bad" };
+// The stage colours: amber while it is to load, blue on the way, green once arrived, grey when cancelled.
+const STATUS_TONE: Record<DispatchStatus, "neutral" | "info" | "warn" | "ok" | "bad"> = { planned: "warn", loading: "warn", closed: "info", received: "ok", cancelled: "neutral" };
 export const DispatchStatusChip = ({ status }: { status: DispatchStatus }) => <Chip tone={STATUS_TONE[status]}>{DISPATCH_STATUS_LABEL[status]}</Chip>;
 
 /** Scanned against planned for one carton type, as a bar. */

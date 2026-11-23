@@ -9,8 +9,8 @@ import { LOGO } from "../src/lib/logo.ts";
 const v = (colour) => `<path d="${LOGO.v}" fill="none" stroke="${colour}" stroke-width="${LOGO.stroke}" stroke-linecap="square" stroke-linejoin="miter"/>`;
 
 /**
- * "tile": the rounded yellow tile on a clear background, as on the pages.
- * "bleed": yellow to every edge, for icons the phone crops to its own shape; the V is shrunk to stay inside the middle
+ * "tile": the rounded indigo tile on a clear background, as on the pages.
+ * "bleed": indigo to every edge, for icons the phone crops to its own shape; the V is shrunk to stay inside the middle
  * circle a phone never crops.
  * "badge": a plain white V on clear, for the small icon in the phone's status bar (Android uses only its shape).
  */
@@ -18,7 +18,7 @@ function logoSvg(variant, size) {
   const open = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${size}" height="${size}">`;
   if (variant === "badge") return `${open}${v("#ffffff")}</svg>`;
   if (variant === "bleed") return `${open}<rect width="64" height="64" fill="${LOGO.tile}"/><g transform="translate(32 32) scale(0.78) translate(-32 -32)">${v(LOGO.ink)}</g></svg>`;
-  return `${open}<rect width="64" height="64" rx="14" fill="${LOGO.tile}"/>${v(LOGO.ink)}</svg>`;
+  return `${open}<rect width="64" height="64" rx="16" fill="${LOGO.tile}"/>${v(LOGO.ink)}</svg>`;
 }
 
 const ICONS = [

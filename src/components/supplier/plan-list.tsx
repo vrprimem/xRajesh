@@ -86,6 +86,7 @@ export function PlanList({ plans, who, dispatchBase, photos = {} }: { plans: Pla
                       key={a.status}
                       type="button"
                       disabled={pending || p.status === a.status}
+                      aria-pressed={p.status === a.status}
                       onClick={() =>
                         startTransition(async () => {
                           if (toast.result(await respondPlan(p.id, a.status))) router.refresh();

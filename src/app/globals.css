@@ -1,138 +1,187 @@
 @import "tailwindcss";
 
 /* =====================================================================================================================
-   VRPRIME Supplier Portal: "Warehouse Bold".
-   Made to be read at a glance on a phone in the loading bay: big type, thick black borders, black and white with
-   safety yellow for the main action, and green, red and blue only for status. Light is white paper and black ink;
-   dark is black with white ink. Auto (no data-theme on <html>) follows the phone or computer.
-   Every text colour is at least 4.5:1 against its background, most of them over 7:1.
+   VRPRIME Supplier Portal: "Indigo modern".
+   Light and calm: white cards on a soft indigo-grey page, indigo for the main action and the page you are on, rounded
+   shapes, Poppins. Dispatch stages carry their own colours everywhere (amber to load, blue on the way, green arrived);
+   red is only for what is wrong. Dark is deep indigo with light ink. Auto (no data-theme on <html>) follows the phone or
+   computer. Every text colour is at least 4.5:1 against its background.
    ===================================================================================================================== */
 
 :root {
   color-scheme: light;
-  --canvas: #ffffff;
+  --canvas: #f5f6fc;
   --surface: #ffffff;
-  --surface2: #f4f4f5;
-  --panel2: #e4e4e7;
+  --surface2: #f0f1fb;
+  --panel2: #e3e5f6;
   --pop: #ffffff;
-  --frame: #0a0a0a;
-  --line: #71717a;
-  --line-soft: #d4d4d8;
-  --ink: #0a0a0a;
-  --muted: #3f3f46;
-  --faint: #52525b;
-  --accent: #ffd60a;
-  --accent-hover: #ffe24f;
-  --accent-ink: #0a0a0a;
-  --accent-soft: #fff4b8;
-  --accent-text: #0a0a0a;
-  --primary-edge: #0a0a0a;
-  --bar: #0a0a0a;
-  --focus: #1d4ed8;
-  --info: #1d4ed8;
-  --info-soft: #dbeafe;
-  --info-ink: #1e3a8a;
-  --ok: #166534;
+  --frame: #dcdff2;
+  --line: #8a8fb8;
+  --line-soft: #e6e8f6;
+  --ink: #1b1d3a;
+  --muted: #4a4e78;
+  --faint: #5f6390;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-ink: #ffffff;
+  --accent-soft: #e0e7ff;
+  --accent-text: #4338ca;
+  --primary-edge: #4f46e5;
+  --bar: #4f46e5;
+  --focus: #4f46e5;
+  --info: #0369a1;
+  --info-soft: #e0f2fe;
+  --info-ink: #075985;
+  --ok: #15803d;
   --ok-soft: #dcfce7;
-  --ok-ink: #14532d;
-  --warn: #92400e;
+  --ok-ink: #166534;
+  --warn: #b45309;
   --warn-soft: #fef3c7;
-  --warn-mark: #ffd60a;
-  --warn-ink: #78350f;
-  --bad: #b91c1c;
+  --warn-mark: #f59e0b;
+  --warn-ink: #92400e;
+  --bad: #dc2626;
   --bad-soft: #fee2e2;
-  --bad-text: #991b1b;
+  --bad-text: #b91c1c;
   --bad-ink: #ffffff;
-  --madder: #b91c1c;
-  --scrim: rgba(10, 10, 10, 0.55);
-  --header: #0a0a0a;
-  --header-raised: #1c1c1f;
-  --header-ink: #ffffff;
-  --header-muted: #d4d4d8;
-  --header-line: #3f3f46;
-  --row-hover: #fef9c3;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --shadow-pop: 0 18px 40px -18px rgba(0, 0, 0, 0.45);
+  --madder: #dc2626;
+  --scrim: rgba(27, 29, 58, 0.5);
+  --header: #ffffff;
+  --header-raised: #f0f1fb;
+  --header-ink: #1b1d3a;
+  --header-muted: #4a4e78;
+  --header-line: #e6e8f6;
+  --hero: #4338ca;
+  --hero-ink: #ffffff;
+  --hero-kicker: #c7d2fe;
+  --row-hover: #f5f6ff;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(27, 29, 58, 0.05), 0 6px 16px -8px rgba(27, 29, 58, 0.1);
+  --shadow-pop: 0 18px 40px -18px rgba(27, 29, 58, 0.35);
+  /* Dispatch stages: a strong band and a soft chip each. */
+  --stage-load: #f59e0b;
+  --stage-load-ink: #3b1d02;
+  --stage-load-soft: #fef3c7;
+  --stage-load-text: #92400e;
+  --stage-way: #0369a1;
+  --stage-way-ink: #ffffff;
+  --stage-way-soft: #e0f2fe;
+  --stage-way-text: #075985;
+  --stage-done: #15803d;
+  --stage-done-ink: #ffffff;
+  --stage-done-soft: #dcfce7;
+  --stage-done-text: #166534;
+  --stage-off: #6b7280;
+  --stage-off-ink: #ffffff;
+  --stage-off-soft: #f1f2f6;
+  --stage-off-text: #4b5563;
 }
 
 /* Dark: chosen, or Auto on a device set to dark. The two blocks are the same. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #000000;
-  --surface: #121212;
-  --surface2: #1c1c1f;
-  --panel2: #2c2c31;
-  --pop: #18181b;
-  --frame: #71717a;
-  --line: #8b8b94;
-  --line-soft: #34343a;
-  --ink: #ffffff;
-  --muted: #d4d4d8;
-  --faint: #b4b4bc;
-  --accent-ink: #000000;
-  --accent-soft: #3a3000;
-  --accent-text: #ffd60a;
-  --primary-edge: #ffd60a;
-  --bar: #ffd60a;
-  --focus: #60a5fa;
-  --info: #93c5fd;
-  --info-soft: #172554;
-  --info-ink: #dbeafe;
+  --canvas: #0d0e1f;
+  --surface: #161834;
+  --surface2: #1d2044;
+  --panel2: #2a2e5c;
+  --pop: #1d2044;
+  --frame: #2f3366;
+  --line: #7c81b8;
+  --line-soft: #262a52;
+  --ink: #eef0ff;
+  --muted: #c3c7ee;
+  --faint: #a6abdc;
+  --accent-hover: #6366f1;
+  --accent-soft: #272a66;
+  --accent-text: #a5b4fc;
+  --bar: #818cf8;
+  --focus: #a5b4fc;
+  --info: #7dd3fc;
+  --info-soft: #0c2a43;
+  --info-ink: #e0f2fe;
   --ok: #4ade80;
-  --ok-soft: #052e16;
+  --ok-soft: #072d18;
   --ok-ink: #bbf7d0;
-  --warn: #fcd34d;
-  --warn-soft: #3a2c05;
+  --warn: #fbbf24;
+  --warn-soft: #3b2a06;
   --warn-ink: #fef3c7;
   --bad: #f87171;
   --bad-soft: #450a0a;
   --bad-text: #fecaca;
   --bad-ink: #000000;
   --madder: #f87171;
-  --scrim: rgba(0, 0, 0, 0.72);
-  --header: #111111;
-  --row-hover: #1f1d12;
+  --scrim: rgba(0, 0, 0, 0.7);
+  --header: #161834;
+  --header-raised: #1d2044;
+  --header-ink: #eef0ff;
+  --header-muted: #c3c7ee;
+  --header-line: #262a52;
+  --hero: #1d2044;
+  --hero-kicker: #a5b4fc;
+  --row-hover: #1d2044;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-pop: 0 18px 40px -16px rgba(0, 0, 0, 0.9);
+  --stage-load-soft: #3b2a06;
+  --stage-load-text: #fde68a;
+  --stage-way-soft: #0c2a43;
+  --stage-way-text: #bae6fd;
+  --stage-done-soft: #072d18;
+  --stage-done-text: #bbf7d0;
+  --stage-off-soft: #23263f;
+  --stage-off-text: #d1d5db;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     color-scheme: dark;
-    --canvas: #000000;
-    --surface: #121212;
-    --surface2: #1c1c1f;
-    --panel2: #2c2c31;
-    --pop: #18181b;
-    --frame: #71717a;
-    --line: #8b8b94;
-    --line-soft: #34343a;
-    --ink: #ffffff;
-    --muted: #d4d4d8;
-    --faint: #b4b4bc;
-    --accent-ink: #000000;
-    --accent-soft: #3a3000;
-    --accent-text: #ffd60a;
-    --primary-edge: #ffd60a;
-    --bar: #ffd60a;
-    --focus: #60a5fa;
-    --info: #93c5fd;
-    --info-soft: #172554;
-    --info-ink: #dbeafe;
+    --canvas: #0d0e1f;
+    --surface: #161834;
+    --surface2: #1d2044;
+    --panel2: #2a2e5c;
+    --pop: #1d2044;
+    --frame: #2f3366;
+    --line: #7c81b8;
+    --line-soft: #262a52;
+    --ink: #eef0ff;
+    --muted: #c3c7ee;
+    --faint: #a6abdc;
+    --accent-hover: #6366f1;
+    --accent-soft: #272a66;
+    --accent-text: #a5b4fc;
+    --bar: #818cf8;
+    --focus: #a5b4fc;
+    --info: #7dd3fc;
+    --info-soft: #0c2a43;
+    --info-ink: #e0f2fe;
     --ok: #4ade80;
-    --ok-soft: #052e16;
+    --ok-soft: #072d18;
     --ok-ink: #bbf7d0;
-    --warn: #fcd34d;
-    --warn-soft: #3a2c05;
+    --warn: #fbbf24;
+    --warn-soft: #3b2a06;
     --warn-ink: #fef3c7;
     --bad: #f87171;
     --bad-soft: #450a0a;
     --bad-text: #fecaca;
     --bad-ink: #000000;
     --madder: #f87171;
-    --scrim: rgba(0, 0, 0, 0.72);
-    --header: #111111;
-    --row-hover: #1f1d12;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --header: #161834;
+    --header-raised: #1d2044;
+    --header-ink: #eef0ff;
+    --header-muted: #c3c7ee;
+    --header-line: #262a52;
+    --hero: #1d2044;
+    --hero-kicker: #a5b4fc;
+    --row-hover: #1d2044;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-pop: 0 18px 40px -16px rgba(0, 0, 0, 0.9);
+    --stage-load-soft: #3b2a06;
+    --stage-load-text: #fde68a;
+    --stage-way-soft: #0c2a43;
+    --stage-way-text: #bae6fd;
+    --stage-done-soft: #072d18;
+    --stage-done-text: #bbf7d0;
+    --stage-off-soft: #23263f;
+    --stage-off-text: #d1d5db;
   }
 }
 
@@ -164,8 +213,8 @@
   --color-panel2: var(--panel2);
   --color-pop: var(--pop);
   --color-scrim: var(--scrim);
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
   --radius-card: var(--radius);
   --radius-card-lg: var(--radius-lg);
@@ -181,13 +230,13 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
 }
 ::selection {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--ink);
 }
 .font-mono,
 code,
@@ -197,6 +246,13 @@ kbd {
 .font-mono.font-semibold,
 .font-mono.font-bold {
   font-weight: 500;
+}
+/* Poppins' heaviest cuts read as shouting: bold and extra-bold settle on semibold. */
+.font-bold,
+.font-extrabold,
+b,
+strong {
+  font-weight: 600;
 }
 select option,
 select optgroup {
@@ -220,25 +276,14 @@ select optgroup {
   border-radius: 999px;
 }
 
-/* ---- The black band: page header and sign-in, with a safety stripe under it ----------------------------------------- */
+/* ---- The page header: a white bar (deep indigo in dark) with the links --------------------------------------------- */
 
-.vr-header,
-.vr-hero {
+.vr-header {
   position: relative;
   z-index: 30;
-  padding-bottom: 8px;
   background: var(--header);
   color: var(--header-ink);
-}
-.vr-header::after,
-.vr-hero::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 8px;
-  background: repeating-linear-gradient(135deg, #ffd60a 0 12px, #0a0a0a 12px 24px);
+  border-bottom: 1px solid var(--header-line);
 }
 /* On phones the header scrolls away (the links are in the bottom bar); on wide screens it stays at the top. */
 @media (min-width: 700px) {
@@ -250,94 +295,100 @@ select optgroup {
 .vr-header .t-caption {
   color: var(--header-muted);
 }
-.vr-header .g-btn-secondary {
-  background: transparent;
-  color: var(--header-ink);
-  border-color: #52525b;
-}
-.vr-header .g-btn-secondary:hover:not(:disabled) {
-  background: var(--header-raised);
-  border-color: #ffd60a;
-}
 .vr-brand {
   font-family: var(--font-display);
-  font-size: 19px;
-  font-weight: 800;
-  line-height: 1.2;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
   letter-spacing: -0.01em;
+}
+
+/* Sign-in: an indigo band with the name. */
+.vr-hero {
+  position: relative;
+  background: var(--hero);
+  color: var(--hero-ink);
 }
 .vr-wordmark {
   font-family: var(--font-display);
-  font-size: 54px;
-  font-weight: 900;
-  line-height: 0.95;
-  letter-spacing: -0.03em;
+  font-size: 46px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
 .vr-kicker {
   font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #ffd60a;
+  color: var(--hero-kicker);
 }
 
-/* Links: a row in the header on wide screens, a black bar at the bottom of phones. The page you are on is yellow. */
+/* Links: pills in the header on wide screens, a white bar at the bottom of phones. The page you are on is indigo. */
 .vr-nav-link {
   font-family: var(--font-display);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14.5px;
+  font-weight: 500;
   color: var(--header-muted);
-  transition: color 120ms ease-out;
+  transition: color 120ms ease-out, background-color 120ms ease-out;
 }
 .vr-nav-link:hover {
   color: var(--header-ink);
 }
 .vr-nav-link[aria-current="page"] {
-  color: #ffd60a;
-}
-.vr-nav-link[aria-current="page"]::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 14%;
-  right: 14%;
-  height: 4px;
-  background: #ffd60a;
+  color: var(--accent-text);
+  font-weight: 600;
 }
 @media (max-width: 699.98px) {
   .vr-nav-link {
-    font-size: 13.5px;
-    font-stretch: 87.5%;
+    font-size: 13px;
+  }
+  .vr-nav-link[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 22%;
+    right: 22%;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--accent);
   }
 }
 @media (min-width: 700px) {
-  .vr-nav-link[aria-current="page"]::after {
-    top: auto;
-    bottom: 0;
-    left: 14px;
-    right: 14px;
+  .vr-nav-link:hover {
+    background: var(--surface2);
+  }
+  .vr-nav-link[aria-current="page"] {
+    background: var(--accent-soft);
   }
 }
 .vr-bottombar {
   background: var(--header);
   border-top: 1px solid var(--header-line);
+  box-shadow: 0 -6px 18px -14px rgba(27, 29, 58, 0.4);
 }
 @media (min-width: 700px) {
   .vr-bottombar {
     background: transparent;
     border-top: 0;
+    box-shadow: none;
+    padding: 0 0 10px;
   }
 }
 
-/* Light / Dark / Auto switch; it always sits on the black band. */
+/* Light / Dark / Auto switch. */
 .vr-seg {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  border: 1px solid var(--header-line);
-  border-radius: 10px;
-  background: var(--header-raised);
+  border: 1px solid var(--frame);
+  border-radius: 12px;
+  background: var(--surface2);
+}
+.vr-hero .vr-seg {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.12);
 }
 .vr-seg button {
   display: inline-flex;
@@ -345,16 +396,26 @@ select optgroup {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 7px;
-  color: var(--header-muted);
+  border-radius: 9px;
+  color: var(--muted);
   transition: color 120ms ease-out, background-color 120ms ease-out;
 }
+.vr-hero .vr-seg button {
+  color: var(--hero-kicker);
+}
 .vr-seg button:hover {
-  color: var(--header-ink);
+  color: var(--ink);
+}
+.vr-hero .vr-seg button:hover {
+  color: var(--hero-ink);
 }
 .vr-seg button[aria-checked="true"] {
-  background: #ffd60a;
-  color: #0a0a0a;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.vr-hero .vr-seg button[aria-checked="true"] {
+  background: #ffffff;
+  color: #4338ca;
 }
 
 /* Sign-in: the switch between the two doors, Supplier and VRPRIME admin. */
@@ -363,8 +424,8 @@ select optgroup {
   grid-template-columns: 1fr 1fr;
   gap: 4px;
   padding: 4px;
-  border: 2px solid var(--frame);
-  border-radius: 12px;
+  border: 1px solid var(--frame);
+  border-radius: 14px;
   background: var(--surface2);
 }
 .vr-doors a {
@@ -372,13 +433,13 @@ select optgroup {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 48px;
+  min-height: 46px;
   padding: 0 8px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1.1;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.15;
   text-align: center;
   color: var(--muted);
 }
@@ -395,72 +456,74 @@ select optgroup {
   /* ---- Type ---- */
   .t-h1 {
     font-family: var(--font-display);
-    font-size: 30px;
-    font-weight: 800;
-    line-height: 1.1;
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.15;
     letter-spacing: -0.02em;
     color: var(--ink);
     text-wrap: balance;
   }
   @media (min-width: 700px) {
     .t-h1 {
-      font-size: 36px;
+      font-size: 32px;
     }
   }
   .t-headline {
-    font-size: 17px;
-    line-height: 1.45;
+    font-size: 16px;
+    line-height: 1.5;
     color: var(--muted);
   }
   .t-headline em {
     font-style: normal;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ink);
   }
   .t-card-title {
     font-family: var(--font-display);
-    font-size: 20px;
-    font-weight: 800;
-    line-height: 1.2;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
     letter-spacing: -0.01em;
     color: var(--ink);
   }
   .t-body {
     font-size: 16px;
-    line-height: 1.5;
+    line-height: 1.55;
   }
   .t-caption {
-    font-size: 14.5px;
-    line-height: 1.45;
+    font-size: 14px;
+    line-height: 1.5;
     color: var(--muted);
   }
   .t-label {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 13.5px;
+    font-weight: 500;
     line-height: 1.3;
     color: var(--muted);
   }
   /* Big numbers: counters and totals. */
   .t-score {
     font-family: var(--font-display);
-    font-weight: 800;
-    line-height: 1;
+    font-weight: 600;
+    line-height: 1.05;
     letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
   }
 
-  /* ---- Cards: white (or black) with a thick border ---- */
+  /* ---- Cards: white on the soft page, a hairline and a soft shadow ---- */
   .sp-card {
     position: relative;
-    border: 2px solid var(--frame);
+    border: 1px solid var(--frame);
     border-radius: var(--radius-lg);
     background: var(--surface);
+    box-shadow: var(--shadow-card);
   }
   .sp-card .sp-card,
   .sp-inner {
     border: 1px solid var(--line-soft);
     border-radius: var(--radius);
     background: var(--surface2);
+    box-shadow: none;
   }
   .g-pad {
     padding: 16px;
@@ -474,57 +537,57 @@ select optgroup {
     margin-bottom: 14px;
   }
   .sp-pop {
-    border: 2px solid var(--frame);
+    border: 1px solid var(--frame);
     border-radius: var(--radius-lg);
     background: var(--pop);
     box-shadow: var(--shadow-pop);
   }
 
-  /* ---- Chips: bold labels with a border in their colour ---- */
+  /* ---- Chips: soft pills in their colour ---- */
   .g-chip {
-    --tone: var(--ink);
+    --tone: var(--muted);
     --tone-bg: var(--surface2);
-    --tone-line: var(--line);
+    --tone-line: var(--frame);
     display: inline-flex;
     flex-shrink: 0;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     min-height: 26px;
-    padding: 2px 9px;
-    border: 1.5px solid var(--tone-line);
-    border-radius: 6px;
+    padding: 2px 10px;
+    border: 1px solid var(--tone-line);
+    border-radius: 999px;
     background: var(--tone-bg);
     color: var(--tone);
-    font-size: 13.5px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 600;
     line-height: 1.1;
     white-space: nowrap;
   }
-  .g-chip.tone-accent { --tone: var(--accent-ink); --tone-bg: var(--accent); --tone-line: var(--accent-ink); }
-  .g-chip.tone-info { --tone: var(--info-ink); --tone-bg: var(--info-soft); --tone-line: var(--info); }
-  .g-chip.tone-ok { --tone: var(--ok-ink); --tone-bg: var(--ok-soft); --tone-line: var(--ok); }
-  .g-chip.tone-warn { --tone: var(--warn-ink); --tone-bg: var(--warn-soft); --tone-line: var(--warn); }
-  .g-chip.tone-bad { --tone: var(--bad-text); --tone-bg: var(--bad-soft); --tone-line: var(--bad); }
+  .g-chip.tone-accent { --tone: var(--accent-text); --tone-bg: var(--accent-soft); --tone-line: transparent; }
+  .g-chip.tone-info { --tone: var(--stage-way-text); --tone-bg: var(--stage-way-soft); --tone-line: transparent; }
+  .g-chip.tone-ok { --tone: var(--stage-done-text); --tone-bg: var(--stage-done-soft); --tone-line: transparent; }
+  .g-chip.tone-warn { --tone: var(--stage-load-text); --tone-bg: var(--stage-load-soft); --tone-line: transparent; }
+  .g-chip.tone-bad { --tone: var(--bad-text); --tone-bg: var(--bad-soft); --tone-line: transparent; }
 
-  /* ---- Buttons: big and bold; the main one is safety yellow ---- */
+  /* ---- Buttons: rounded; the main one is indigo ---- */
   .g-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
     max-width: 100%;
-    min-height: 48px;
+    min-height: 46px;
     padding: 6px 18px;
-    border: 2px solid transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius);
     font-family: var(--font-display);
-    font-size: 16px;
-    font-weight: 800;
-    line-height: 1.15;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.2;
     text-align: center;
     text-wrap: balance;
     cursor: pointer;
-    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, transform 80ms ease-out;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out, transform 80ms ease-out;
   }
   .g-btn:active:not(:disabled) {
     transform: translateY(1px);
@@ -538,45 +601,58 @@ select optgroup {
     background: var(--accent);
     color: var(--accent-ink);
     border-color: var(--primary-edge);
+    box-shadow: 0 6px 14px -8px rgba(79, 70, 229, 0.7);
   }
   .g-btn-primary:hover:not(:disabled) {
     background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+  /* The answer already given (Accept, In production...): shown as chosen, not as a faded button. */
+  .g-btn[aria-pressed="true"]:disabled {
+    opacity: 1;
+    cursor: default;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-color: var(--accent);
+    box-shadow: none;
   }
   .g-btn-secondary,
   .g-btn-outline {
     background: var(--surface);
     color: var(--ink);
-    border-color: var(--ink);
+    border-color: var(--frame);
   }
   .g-btn-secondary:hover:not(:disabled),
   .g-btn-outline:hover:not(:disabled) {
     background: var(--surface2);
+    border-color: var(--line);
   }
   .g-btn-ghost {
     background: transparent;
-    color: var(--ink);
-    text-decoration: underline;
-    text-decoration-thickness: 2px;
-    text-underline-offset: 4px;
+    color: var(--accent-text);
   }
   .g-btn-ghost:hover:not(:disabled) {
-    background: var(--surface2);
+    background: var(--accent-soft);
   }
   .g-btn-danger {
     background: var(--bad-soft);
     color: var(--bad-text);
+    border-color: transparent;
+  }
+  .g-btn-danger:hover:not(:disabled) {
     border-color: var(--bad);
   }
   /* Small buttons in rows and tables stay on one line. */
   .g-btn.g-btn-row {
-    min-height: 40px;
+    min-height: 38px;
     padding: 0 14px;
-    font-size: 15px;
-    font-weight: 700;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
     white-space: nowrap;
   }
 
-  /* ---- Focus: a thick blue ring on every control ---- */
+  /* ---- Focus: an indigo ring on every control ---- */
   .focus-ring:focus-visible,
   .g-btn:focus-visible,
   .input:focus-visible,
@@ -591,9 +667,9 @@ select optgroup {
   /* ---- Inputs ---- */
   .input {
     width: 100%;
-    min-height: 48px;
+    min-height: 46px;
     padding: 10px 12px;
-    border: 2px solid var(--line);
+    border: 1.5px solid var(--line);
     border-radius: var(--radius);
     background: var(--surface);
     color: var(--ink);
@@ -605,12 +681,12 @@ select optgroup {
     color: var(--faint);
   }
   .input:hover {
-    border-color: var(--ink);
+    border-color: var(--accent);
   }
   .input:focus,
   .input:focus-visible {
-    border-color: var(--ink);
-    box-shadow: 0 0 0 3px var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
     outline: none;
   }
   .input[aria-invalid="true"] {
@@ -630,18 +706,18 @@ select optgroup {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    font-size: 15.5px;
-    line-height: 1.35;
+    font-size: 15px;
+    line-height: 1.4;
   }
   .ledger thead th {
-    height: 46px;
+    height: 44px;
     padding: 0 12px;
-    border-bottom: 2px solid var(--frame);
+    border-bottom: 1px solid var(--frame);
     background: var(--surface2);
-    color: var(--ink);
+    color: var(--muted);
     font-family: var(--font-display);
-    font-size: 14px;
-    font-weight: 800;
+    font-size: 13px;
+    font-weight: 600;
     text-align: left;
     white-space: nowrap;
   }
@@ -653,7 +729,7 @@ select optgroup {
     vertical-align: middle;
   }
   .ledger tbody th {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ink);
   }
   .ledger tbody tr:hover {
@@ -668,7 +744,7 @@ select optgroup {
     font-variant-numeric: tabular-nums;
   }
   .ledger td.num {
-    font-weight: 700;
+    font-weight: 600;
   }
   /* First column stays put when a wide table scrolls sideways on a phone. */
   @media (max-width: 699.98px) {
@@ -691,28 +767,69 @@ select optgroup {
     gap: 8px 10px;
     min-width: 0;
     padding: 12px 14px;
-    border: 2px solid var(--frame);
+    border: 1px solid var(--frame);
     border-radius: var(--radius);
     background: var(--surface);
   }
   .tone-row.tone-ok {
-    border-color: var(--ok);
+    border-color: transparent;
     background: var(--ok-soft);
     color: var(--ok-ink);
   }
   .tone-row.tone-bad {
-    border-color: var(--bad);
+    border-color: transparent;
     background: var(--bad-soft);
     color: var(--bad-text);
   }
   .tone-row-title {
-    font-size: 15.5px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 600;
     line-height: 1.35;
   }
+
+  /* ---- Dispatch stages: a band across the top of a card, and a soft pill ---- */
+  .stage-band {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 6px 16px;
+    background: var(--stage-bg);
+    color: var(--stage-ink);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .stage-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: var(--stage-soft);
+    color: var(--stage-text);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .stage-pill:hover {
+    box-shadow: inset 0 0 0 1px var(--stage-bg);
+  }
+  .stage-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--stage-bg);
+  }
+  .stage-load { --stage-bg: var(--stage-load); --stage-ink: var(--stage-load-ink); --stage-soft: var(--stage-load-soft); --stage-text: var(--stage-load-text); }
+  .stage-way { --stage-bg: var(--stage-way); --stage-ink: var(--stage-way-ink); --stage-soft: var(--stage-way-soft); --stage-text: var(--stage-way-text); }
+  .stage-done { --stage-bg: var(--stage-done); --stage-ink: var(--stage-done-ink); --stage-soft: var(--stage-done-soft); --stage-text: var(--stage-done-text); }
+  .stage-off { --stage-bg: var(--stage-off); --stage-ink: var(--stage-off-ink); --stage-soft: var(--stage-off-soft); --stage-text: var(--stage-off-text); }
 }
 
-/* A progress bar that is not yet full: black on white, yellow on black. */
+/* A progress bar that is not yet full: indigo. */
 .vr-bar {
   background: var(--bar);
 }
@@ -741,5 +858,8 @@ select optgroup {
   body {
     background: #fff;
     color: #000;
+  }
+  .sp-card {
+    box-shadow: none;
   }
 }

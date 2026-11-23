@@ -50,7 +50,7 @@ export function ProduceList({ rows, canAnswer, photos = {} }: { rows: ProduceRow
           {canAnswer ? (
             <div className="flex flex-wrap gap-2">
               {ANSWERS.map((a) => (
-                <button key={a.status} type="button" disabled={pending || r.status === a.status} onClick={() => answer(r.id, a.status)} className={buttonClass(r.status === a.status ? "primary" : "row")}>
+                <button key={a.status} type="button" aria-pressed={r.status === a.status} disabled={pending || r.status === a.status} onClick={() => answer(r.id, a.status)} className={buttonClass(r.status === a.status ? "primary" : "row")}>
                   {a.label}
                 </button>
               ))}
