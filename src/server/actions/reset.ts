@@ -2,79 +2,108 @@
 
 import { createClient as createSessionClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import QRCode from "qrcode";
 import { z } from "zod";
 import { getActiveUser, isOwner } from "@/lib/auth";
 import { logError } from "@/lib/redact";
 import { getAdmin } from "@/lib/supabase/admin";
 import { supabaseEnv } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
+import { groupKey, keyFromHex, otpauthUri } from "@/lib/totp";
 import type { ActionResult } from "@/lib/types";
 import { fieldErrors } from "@/lib/validation";
 
-// The owner's factory reset. What goes, what stays and every lock are in
-// supabase/migrations/20261123107000_factory_reset.sql; the database checks all of it, the app only asks.
-//   1. sendResetCode: notes the request in the database, then has Supabase email the owner a one-time code.
-//   2. confirmFactoryReset: checks the code with Supabase, which answers with a session marked "signed in with a
-//      code", and asks the database to wipe using that session. Then removes the vehicle photo files, which only the
-//      Storage API can delete.
+// The owner's factory reset, confirmed with an authenticator app. What goes, what stays and every lock are in
+// supabase/migrations/20261123108000_factory_reset_authenticator.sql; the database checks all of it, the app only asks.
+//   linkAuthenticator:  checks the owner's password, then asks the database for a new secret, shown once as a QR code.
+//   finishAuthenticator: the app's first code; the database links the app if it is right.
+//   confirmFactoryReset: the app's current code and the level; the database checks the code and wipes. Then the vehicle
+//                        photo files go, which only the Storage API can delete.
 // Nothing here talks to the inventory software.
 
 const OWNER_ONLY = "Only the owner can reset the portal.";
-const NO_EMAIL = "Your login has no email address to send a code to.";
+const CODE = z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from the app");
 
-export async function sendResetCode(): Promise<ActionResult> {
-  const user = await getActiveUser();
-  if (!user || !isOwner(user)) return { ok: false, message: OWNER_ONLY };
-  if (!user.email) return { ok: false, message: NO_EMAIL };
-
-  const supabase = await createClient();
-  const { error: requestError } = await supabase.rpc("factory_reset_request");
-  if (requestError) {
-    logError("factory reset request", requestError);
-    return { ok: false, message: "Could not start the reset. Try again." };
-  }
-  const { error } = await supabase.auth.signInWithOtp({ email: user.email, options: { shouldCreateUser: false } });
-  if (error) {
-    logError("factory reset code", error);
-    const tooMany = error.status === 429 || /rate limit|security purposes/i.test(error.message);
-    return { ok: false, message: tooMany ? "Too many codes asked for. Wait a minute, then try again." : "Could not send the code. Try again in a minute." };
-  }
-  return { ok: true, message: `Code sent to ${user.email}` };
+/** Plain words for what the database said about a code. */
+function codeProblem(reason: unknown): string {
+  if (reason === "locked") return "Too many wrong codes. Codes are refused for 15 minutes; try again after that.";
+  if (reason === "missing") return "Link your authenticator app first.";
+  return "That code is wrong or already used. Enter the newest code the app shows.";
 }
 
-const confirmSchema = z.object({
+async function owner() {
+  const user = await getActiveUser();
+  return user && isOwner(user) ? user : null;
+}
+
+export async function linkAuthenticator(input: unknown): Promise<ActionResult<{ qr: string; key: string }>> {
+  const parsed = z.object({ password: z.string().min(1, "Enter your password") }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Enter your password.", fieldErrors: fieldErrors(parsed.error) };
+  const user = await owner();
+  if (!user) return { ok: false, message: OWNER_ONLY };
+  if (!user.email) return { ok: false, message: "Your login has no email address, so the password cannot be checked." };
+
+  // Signing in again proves the password; the database only links an app for a password sign-in in the last 10 minutes.
+  const supabase = await createClient();
+  const { data: signedIn, error: passwordError } = await supabase.auth.signInWithPassword({ email: user.email, password: parsed.data.password });
+  if (passwordError || !signedIn.session) {
+    return { ok: false, message: "Wrong password.", fieldErrors: { password: "Wrong password" } };
+  }
+  const { url, key } = supabaseEnv();
+  const fresh = createSessionClient(url, key, {
+    global: { headers: { Authorization: `Bearer ${signedIn.session.access_token}` } },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { data: hex, error } = await fresh.rpc("reset_authenticator_begin");
+  if (error || typeof hex !== "string") {
+    if (error && /already linked/.test(error.message)) return { ok: false, message: "An authenticator app is already linked." };
+    logError("reset authenticator begin", error);
+    return { ok: false, message: "Could not start linking the app. Try again." };
+  }
+
+  const secret = keyFromHex(hex);
+  const svg = await QRCode.toString(otpauthUri(secret, user.email), { type: "svg", margin: 2, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } });
+  return { ok: true, message: "Scan the QR code", data: { qr: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`, key: groupKey(secret) } };
+}
+
+export async function finishAuthenticator(input: unknown): Promise<ActionResult> {
+  const parsed = z.object({ code: CODE }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Check the code.", fieldErrors: fieldErrors(parsed.error) };
+  if (!(await owner())) return { ok: false, message: OWNER_ONLY };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("reset_authenticator_confirm", { p_code: parsed.data.code });
+  if (error) {
+    logError("reset authenticator confirm", error);
+    return { ok: false, message: "Could not check the code. Try again." };
+  }
+  if (data !== "ok") {
+    return { ok: false, message: data === "missing" ? "Show the QR code again and scan it." : codeProblem(data), fieldErrors: { code: "Wrong code" } };
+  }
+  revalidatePath("/suppliers/reset");
+  return { ok: true, message: "Authenticator app linked" };
+}
+
+const resetSchema = z.object({
   scope: z.enum(["activity", "everything"], "Choose what to wipe"),
-  code: z.string().trim().regex(/^\d{6,10}$/, "Enter the code from the email"),
+  code: CODE,
   confirm: z.string().trim().refine((v) => v.toUpperCase() === "RESET", "Type RESET"),
 });
 
 export async function confirmFactoryReset(input: unknown): Promise<ActionResult<{ counts: Record<string, number> }>> {
-  const parsed = confirmSchema.safeParse(input);
+  const parsed = resetSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
-  const user = await getActiveUser();
-  if (!user || !isOwner(user)) return { ok: false, message: OWNER_ONLY };
-  if (!user.email) return { ok: false, message: NO_EMAIL };
+  if (!(await owner())) return { ok: false, message: OWNER_ONLY };
   const { scope, code } = parsed.data;
 
   const supabase = await createClient();
-  const { data: verified, error: codeError } = await supabase.auth.verifyOtp({ email: user.email, token: code, type: "email" });
-  if (codeError || !verified.session) {
-    return { ok: false, message: "That code is wrong or has expired. Ask for a new one.", fieldErrors: { code: "Wrong or expired code" } };
-  }
-
-  // Wipe with the session the code just made, so the database can see it came from an emailed code.
-  const { url, key } = supabaseEnv();
-  const withCode = createSessionClient(url, key, {
-    global: { headers: { Authorization: `Bearer ${verified.session.access_token}` } },
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-  const { data, error } = await withCode.rpc("factory_reset", { p_scope: scope });
+  const { data, error } = await supabase.rpc("factory_reset", { p_scope: scope, p_code: code });
   if (error) {
     logError("factory reset", error);
-    const known = /Ask for a new code first|Confirm with the code from your email first|Only the owner can reset the portal/.exec(error.message);
-    return { ok: false, message: known ? `${known[0]}. Nothing was deleted.` : "The reset did not run, so nothing was deleted. Try again." };
+    return { ok: false, message: "The reset did not run, so nothing was deleted. Try again." };
   }
-  const result = data as { counts: Record<string, number>; photos: string[] | null };
+  const result = data as { ok: boolean; reason?: string; counts?: Record<string, number>; photos?: string[] | null };
+  if (!result.ok) return { ok: false, message: `${codeProblem(result.reason)} Nothing was deleted.`, fieldErrors: { code: "Wrong code" } };
 
   // Vehicle photos are files: only the Storage API can remove them.
   const photos = result.photos ?? [];
@@ -90,5 +119,5 @@ export async function confirmFactoryReset(input: unknown): Promise<ActionResult<
   }
 
   revalidatePath("/", "layout");
-  return { ok: true, message: scope === "everything" ? "Factory reset done" : "Test activity cleared", data: { counts: result.counts } };
+  return { ok: true, message: scope === "everything" ? "Factory reset done" : "Test activity cleared", data: { counts: result.counts ?? {} } };
 }

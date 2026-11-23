@@ -115,3 +115,16 @@ the phone reads them.
 - Start a sync by hand: `select private.start_inventory_sync();`
 - Run the Produce now check by hand: `select private.supplier_produce_check();`
 - Function logs: Edge Functions > the function > Logs.
+
+## Factory reset
+
+The owner can wipe the portal from VRPRIME logins > Factory reset: either the test activity only, or everything except
+VRPRIME's own logins. Nothing in the inventory software is touched. It asks for the code of an authenticator app
+(Google or Microsoft Authenticator) that the owner links once on that page, after entering their password again.
+
+- A linked app cannot be swapped from the portal (so nobody who learns the password can link their own phone). If the
+  owner's phone is lost or replaced, remove the link in the SQL editor, then link the new phone on the reset page:
+  `delete from private.reset_authenticators;`
+- Who reset what, and when (kept through every reset): `select * from private.factory_resets order by id desc;`
+- Prove the locks on a fresh copy or locally (it refuses to run where there are suppliers, so never on the live portal):
+  `supabase/tests/reset_check.sql`

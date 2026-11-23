@@ -22,7 +22,7 @@ export default async function StaffLoginsPage() {
         <SectionHead
           className="mb-0"
           title="Factory reset"
-          sub="Wipe a test run, or everything except VRPRIME's logins. Asks for a one-time code from your email first."
+          sub="Wipe a test run, or everything except VRPRIME's logins. Asks for a code from an authenticator app on your phone."
           action={
             <Link href="/suppliers/reset" className={buttonClass("danger")}>
               Factory reset

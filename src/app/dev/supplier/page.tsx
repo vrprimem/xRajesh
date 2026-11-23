@@ -181,8 +181,8 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
 
       {view === "reset" ? (
         <>
-          <PageTitle title="Factory reset" sub="Wipes the portal's data. It cannot be undone, so it asks for a one-time code from your email first." />
-          <FactoryReset email="owner@example.test" />
+          <PageTitle title="Factory reset" sub="Wipes the portal's data. It cannot be undone, so it asks for a code from an authenticator app on your phone." />
+          <FactoryReset status={sp.linked === "1" ? "linked" : "none"} />
         </>
       ) : null}
 
