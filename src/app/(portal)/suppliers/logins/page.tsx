@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { StaffLogins, type StaffLogin } from "@/components/supplier/supplier-admin";
-import { PageTitle } from "@/components/ui";
+import Link from "next/link";
+import { buttonClass, Card, PageTitle, SectionHead } from "@/components/ui";
 import { isOwner, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,6 +18,18 @@ export default async function StaffLoginsPage() {
     <>
       <PageTitle title="VRPRIME logins" />
       <StaffLogins logins={(data ?? []) as StaffLogin[]} me={user.id} />
+      <Card className="g-pad mt-6">
+        <SectionHead
+          className="mb-0"
+          title="Factory reset"
+          sub="Wipe a test run, or everything except VRPRIME's logins. Asks for a one-time code from your email first."
+          action={
+            <Link href="/suppliers/reset" className={buttonClass("danger")}>
+              Factory reset
+            </Link>
+          }
+        />
+      </Card>
     </>
   );
 }

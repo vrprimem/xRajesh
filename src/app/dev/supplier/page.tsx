@@ -5,6 +5,7 @@ import AuthLayout from "@/app/(auth)/layout";
 import { SignInDoor } from "@/components/auth/sign-in-door";
 import { PortalShell } from "@/components/portal-shell";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
+import { FactoryReset } from "@/components/supplier/factory-reset";
 import { Label, LABEL_CSS } from "@/components/supplier/label";
 import { PlanForm } from "@/components/supplier/plan-form";
 import { PlanList } from "@/components/supplier/plan-list";
@@ -88,7 +89,7 @@ const PLANS: PlanRow[] = [
   ] },
 ];
 
-const VIEWS = ["home", "dispatch", "scan", "labels", "products", "vrprime", "plan", "signin"] as const;
+const VIEWS = ["home", "dispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
 
 export default async function SupplierPreviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (process.env.NODE_ENV !== "development") notFound();
@@ -175,6 +176,13 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
         <>
           <PageTitle title="Rajesh Industries: new send plan" sub="Tell the supplier what to make and send next" />
           <PlanForm supplierId={SUPPLIER} supplierName="Rajesh Industries" rows={STOCK} defaultDue="2026-11-26" back="/dev/supplier" />
+        </>
+      ) : null}
+
+      {view === "reset" ? (
+        <>
+          <PageTitle title="Factory reset" sub="Wipes the portal's data. It cannot be undone, so it asks for a one-time code from your email first." />
+          <FactoryReset email="owner@example.test" />
         </>
       ) : null}
 
