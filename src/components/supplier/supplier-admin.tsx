@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Card, Chip, Field, buttonClass } from "@/components/ui";
 import { SUPPLIER_ROLES, type SupplierRole } from "@/lib/types";
-import { createStaffLogin, createSupplier, createSupplierLogin, resetSupplierPassword, setStaffLoginActive, setSupplierLoginActive, updateSupplier } from "@/server/actions/supplier";
+import { changeSupplierPassword, createStaffLogin, createSupplier, createSupplierLogin, removeSupplierLogin, setStaffLoginActive, setSupplierLoginActive, updateSupplier } from "@/server/actions/supplier";
 
 export const SUPPLIER_ROLE_LABEL: Record<SupplierRole, string> = {
   supplier_owner: "Supplier owner / manager (everything in his portal)",
@@ -82,7 +82,10 @@ function tempPassword(): string {
   return Array.from(bytes, (b) => letters[b % letters.length]).join("");
 }
 
-/** Owner only: the logins of one supplier. Each sees that supplier's portal and nothing else in the app. */
+/**
+ * Owner only: the logins of one supplier. Each sees that supplier's portal and nothing else in the app. A login can get
+ * a new password (kept as given, or one they replace at their next sign-in), be switched off for a while, or be removed.
+ */
 export function SupplierLogins({ supplierId, supplierName, logins }: { supplierId: string; supplierName: string; logins: SupplierLogin[] }) {
   const router = useRouter();
   const toast = useToast();
@@ -92,6 +95,27 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [resetFor, setResetFor] = useState<string | null>(null);
   const [resetPw, setResetPw] = useState("");
+  const [mustChange, setMustChange] = useState(false);
+
+  const openPassword = (l: SupplierLogin) => {
+    setResetFor(resetFor === l.id ? null : l.id);
+    setResetPw("");
+    setMustChange(false);
+  };
+  const remove = (l: SupplierLogin) => {
+    const lastOwner = l.role === "supplier_owner" && !logins.some((x) => x.id !== l.id && x.role === "supplier_owner");
+    const text =
+      `Remove ${l.name}'s login? They can no longer sign in, and the login is deleted for good. Dispatches and scans they made stay.` +
+      (lastOwner ? ` ${supplierName} will have no owner login until you add one.` : "") +
+      " To stop them only for a while, use Switch off instead.";
+    if (!window.confirm(text)) return;
+    startTransition(async () => {
+      if (toast.result(await removeSupplierLogin(l.id))) {
+        if (resetFor === l.id) setResetFor(null);
+        router.refresh();
+      }
+    });
+  };
 
   return (
     <Card className="g-pad">
@@ -123,8 +147,8 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {l.active ? <Chip tone="ok">Active</Chip> : <Chip tone="bad">Switched off</Chip>}
-                <button type="button" disabled={pending} onClick={() => setResetFor(resetFor === l.id ? null : l.id)} className={buttonClass("row")}>
-                  Reset password
+                <button type="button" disabled={pending} aria-expanded={resetFor === l.id} onClick={() => openPassword(l)} className={buttonClass("row")}>
+                  Change password
                 </button>
                 <button
                   type="button"
@@ -138,30 +162,48 @@ export function SupplierLogins({ supplierId, supplierName, logins }: { supplierI
                 >
                   {l.active ? "Switch off" : "Switch on"}
                 </button>
+                <button type="button" disabled={pending} onClick={() => remove(l)} className={buttonClass("danger", "g-btn-row")}>
+                  Remove
+                </button>
               </div>
               {resetFor === l.id ? (
                 <form
-                  className="flex w-full flex-wrap items-end gap-2 pb-1"
+                  className="flex w-full flex-col gap-3 rounded-[12px] border border-frame bg-surface2 p-3"
                   onSubmit={(e) => {
                     e.preventDefault();
                     startTransition(async () => {
-                      if (toast.result(await resetSupplierPassword(l.id, resetPw))) {
+                      if (toast.result(await changeSupplierPassword(l.id, resetPw, mustChange))) {
                         setResetFor(null);
                         setResetPw("");
                       }
                     });
                   }}
                 >
-                  <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[14px] text-muted">
-                    New temporary password for {l.name}
-                    <input className="input font-mono" autoComplete="off" value={resetPw} onChange={(e) => setResetPw(e.target.value)} />
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[14px] text-muted">
+                      New password for {l.name}
+                      <input className="input font-mono" autoComplete="off" value={resetPw} onChange={(e) => setResetPw(e.target.value)} />
+                    </label>
+                    <button type="button" onClick={() => setResetPw(tempPassword())} className={buttonClass("outline")}>
+                      Generate
+                    </button>
+                  </div>
+                  <label className="flex items-start gap-2 text-[15px]">
+                    <input type="checkbox" className="mt-1" checked={mustChange} onChange={(e) => setMustChange(e.target.checked)} />
+                    Ask {l.name} to choose a new password at the next sign-in
                   </label>
-                  <button type="button" onClick={() => setResetPw(tempPassword())} className={buttonClass("outline")}>
-                    Generate
-                  </button>
-                  <button type="submit" disabled={pending || resetPw.length < 8} className={buttonClass("primary")}>
-                    Save
-                  </button>
+                  <p className="t-caption">
+                    At least 8 characters. Tell {l.name} the new password
+                    {mustChange ? "; it works once, then they set their own." : ". It stays until they change it with the Password button."}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="submit" disabled={pending || resetPw.length < 8} className={buttonClass("primary")}>
+                      {pending ? "Saving..." : "Save password"}
+                    </button>
+                    <button type="button" disabled={pending} onClick={() => setResetFor(null)} className={buttonClass("outline")}>
+                      Cancel
+                    </button>
+                  </div>
                 </form>
               ) : null}
             </li>

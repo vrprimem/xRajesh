@@ -280,14 +280,17 @@ export async function updateSupplier(input: unknown): Promise<ActionResult> {
   return { ok: true, message: v.active ? `${v.name} saved` : `${v.name} switched off: its logins can no longer see anything` };
 }
 
-/** Gives a supplier login a new temporary password; they choose their own at their next sign-in. Owner only. */
-export async function resetSupplierPassword(userId: unknown, password: unknown): Promise<ActionResult> {
+/**
+ * Gives a supplier login a new password. With `mustChange` they choose their own at their next sign-in; without it the
+ * password stays as given until they change it themselves. Owner only.
+ */
+export async function changeSupplierPassword(userId: unknown, password: unknown, mustChange: unknown): Promise<ActionResult> {
   const denied = await staff(true);
   if (denied) return denied;
   const user = id(userId);
   const pw = z.string().min(8, "Use at least 8 characters").max(72).safeParse(password);
-  if (!user) return NOT_ALLOWED;
-  if (!pw.success) return { ok: false, message: "The temporary password needs at least 8 characters." };
+  if (!user || typeof mustChange !== "boolean") return NOT_ALLOWED;
+  if (!pw.success) return { ok: false, message: "The new password needs at least 8 characters." };
   const { admin, problem } = getAdmin();
   if (problem !== null) return { ok: false, message: problem };
   // Only ever a supplier login: this can never change one of VRPRIME's own people's password.
@@ -295,13 +298,40 @@ export async function resetSupplierPassword(userId: unknown, password: unknown):
   if (!profile || !(SUPPLIER_ROLES as readonly string[]).includes(profile.role as string)) return NOT_ALLOWED;
   const { error: authError } = await admin.auth.admin.updateUserById(user, { password: pw.data });
   if (authError) {
-    logError("supplier password reset", authError);
-    return { ok: false, message: adminErrorMessage("reset the password", authError) };
+    logError("supplier password change", authError);
+    return { ok: false, message: adminErrorMessage("change the password", authError) };
   }
-  const { error } = await admin.from("profiles").update({ must_change_password: true }).eq("id", user);
-  if (error) return failed(error, "finish the reset");
+  const { error } = await admin.from("profiles").update({ must_change_password: mustChange }).eq("id", user);
+  if (error) return failed(error, "finish the password change");
   refresh();
-  return { ok: true, message: "Password reset. Tell them the temporary password; they choose their own when they sign in." };
+  return {
+    ok: true,
+    message: mustChange ? "Password changed. Tell them the new password; they choose their own when they next sign in." : "Password changed. Tell them the new password.",
+  };
+}
+
+/**
+ * Removes a supplier login for good: it can no longer sign in, and its email can be used for a new login. What it did
+ * stays (dispatches, scans, plans), only without the name of who did it. Owner only.
+ */
+export async function removeSupplierLogin(userId: unknown): Promise<ActionResult> {
+  const denied = await staff(true);
+  if (denied) return denied;
+  const user = id(userId);
+  if (!user) return NOT_ALLOWED;
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return { ok: false, message: problem };
+  // Only ever a supplier login: this can never remove one of VRPRIME's own people.
+  const { data: profile } = await admin.from("profiles").select("role, name").eq("id", user).maybeSingle();
+  if (!profile || !(SUPPLIER_ROLES as readonly string[]).includes(profile.role as string)) return NOT_ALLOWED;
+  // Deleting the sign-in deletes its profile too (and its alerts); other records keep their rows with "by" left empty.
+  const { error: authError } = await admin.auth.admin.deleteUser(user);
+  if (authError) {
+    logError("supplier login remove", authError);
+    return { ok: false, message: adminErrorMessage("remove the login", authError) };
+  }
+  refresh();
+  return { ok: true, message: `${profile.name as string}'s login is removed` };
 }
 
 const loginSchema = z.object({

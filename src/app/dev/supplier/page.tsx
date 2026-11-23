@@ -14,7 +14,7 @@ import { ProduceList } from "@/components/supplier/produce-list";
 import { ProductsPanel } from "@/components/supplier/products-panel";
 import { Scanner } from "@/components/supplier/scanner";
 import { StockTable } from "@/components/supplier/stock-table";
-import { StaffLogins } from "@/components/supplier/supplier-admin";
+import { StaffLogins, SupplierLogins } from "@/components/supplier/supplier-admin";
 import { SyncCard } from "@/components/supplier/sync-card";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import type { CartonType } from "@/lib/supplier";
@@ -221,6 +221,14 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
           <PageTitle title="Rajesh Industries" sub="Sends to Bhiwandi" />
           <SyncCard state={{ last_try_at: "2026-11-23T06:00:00Z", last_ok_at: "2026-11-23T06:00:00Z", last_error: null, last_products: 212 }} />
           <StockTable rows={STOCK} warehouse="Bhiwandi" canSetMin />
+          <SupplierLogins
+            supplierId={SUPPLIER}
+            supplierName="Rajesh Industries"
+            logins={[
+              { id: "l1", name: "Rajesh", role: "supplier_owner", active: true, email: "rajesh@example.com" },
+              { id: "l2", name: "Suresh", role: "supplier_scanner", active: true, email: "suresh@example.com" },
+            ]}
+          />
           <StaffLogins me="u1" logins={[{ id: "u1", name: "Aman", role: "owner", active: true }, { id: "u2", name: "Jigar", role: "admin", active: true }]} />
           <DispatchPanel detail={{ ...DETAIL, dispatch: { ...DETAIL.dispatch, status: "closed", closed_at: "2026-11-23T09:00:00Z" } }} who="vrprime" base="/dev/supplier" />
         </div>
