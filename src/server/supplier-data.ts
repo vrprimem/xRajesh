@@ -114,13 +114,6 @@ export async function loadSyncState(): Promise<SyncState | null> {
   return (data as SyncState | null) ?? null;
 }
 
-/** VRPRIME's master SKUs (the inventory software's products), for the owner's product form. VRPRIME's people only. */
-export async function loadMasters(): Promise<{ code: string; name: string }[]> {
-  const db = await supplierDb();
-  const { data, error } = await db.from("master_products").select("code, name").order("code").limit(5000);
-  return soft("master SKUs", error, data as { code: string; name: string }[] | null, []);
-}
-
 export type ReportData = { dispatches: { id: string; number: number; status: string; closed_at: string }[]; cartons: { dispatch_id: string; product_id: string; carton_type: "H" | "T"; units: number; inbound_status: string | null }[]; names: Map<string, string> };
 
 /** Dispatches closed in a month (India time) with their loaded cartons, for the carton report. */

@@ -35,6 +35,19 @@ const PRODUCTS: ProductRow[] = [
   { id: pid(4), name: "Scratch Remover Bottle 150ml", master_id: pid(54), master_code: "150-SCRATCH", category: "other_cleaning", units_per_carton: 110, carton_type: "H", daily_capacity: 2000, active: false, weight_per_carton: 8.5 },
 ];
 
+// A sample of the inventory software's products, for trying the master SKU search without a database.
+const MASTERS = [
+  { code: "150-KITCHEN", name: "Kitchen Cleaner Spray 500ml" },
+  { code: "150-KITCHEN-1L", name: "Kitchen Cleaner Refill 1L" },
+  { code: "150-GLASS", name: "Glass Cleaner 500ml" },
+  { code: "150-BATH", name: "Bathroom Cleaner 500ml" },
+  { code: "150-FLOOR", name: "Floor Cleaner Lavender 1L" },
+  { code: "150-SCRATCH BOTTLE", name: "Scratch Remover Bottle 150ml" },
+  { code: "160-RAT", name: "Rat Repellent Spray 300ml" },
+  { code: "160-LIZARD", name: "Lizard Repellent Spray 250ml" },
+  { code: "160-COCKROACH", name: "Cockroach Repellent Spray 250ml" },
+];
+
 function fakeCartons(): CartonRow[] {
   const out: CartonRow[] = [];
   const add = (product: ProductRow, type: CartonType, count: number, loaded: number) => {
@@ -168,7 +181,7 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       {view === "products" ? (
         <>
           <PageTitle title="Products" sub="3 active" />
-          <ProductsPanel supplierId={SUPPLIER} products={PRODUCTS} canEdit={who === "owner"} />
+          <ProductsPanel supplierId={SUPPLIER} products={PRODUCTS} canEdit={who === "owner"} demoMasters={MASTERS} />
         </>
       ) : null}
 

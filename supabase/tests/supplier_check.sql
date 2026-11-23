@@ -603,7 +603,58 @@ begin
   assert n = 0, 'nothing is raised while the stock sync is a day old';
 
   -- =====================================================================================
-  -- 6. A deactivated supplier login, a deactivated supplier, a signed-out visitor
+  -- 6. Master SKU search: by any words of the name or code; VRPRIME and a supplier's owner only
+  -- =====================================================================================
+  insert into public.master_products (code, name) values
+    ('SPCHK-KC-500', 'SP Check Kitchen Cleaner Spray 500ml'),
+    ('SPCHK-GC-500', 'SP Check Glass Cleaner 500ml'),
+    ('SPCHK-RR-300', 'SP Check Rat Repellent 300ml');
+  insert into public.master_products (code, name) select 'SPCHK-BULK-' || g, 'SP Check Bulk Item ' || g from generate_series(1, 30) g;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into n from public.master_products;
+  assert n = 0, 'a supplier login still cannot read the master SKU list itself';
+  select count(*) into n from public.master_sku_search('sp check cleaner');
+  assert n = 2, 'a word finds every master SKU that has it: ' || n;
+  select count(*) into n from public.master_sku_search('SP CHECK   clean kitchen');
+  assert n = 1, 'every word must match, in any order, case ignored';
+  select code into t from public.master_sku_search('sp check glass');
+  assert t = 'SPCHK-GC-500', 'the right master SKU comes back';
+  select count(*) into n from public.master_sku_search('spchk-rr');
+  assert n = 1, 'codes match too';
+  select count(*) into n from public.master_sku_search('c');
+  assert n = 0, 'one letter is too short to search';
+  select count(*) into n from public.master_sku_search('sp check %');
+  assert n = 0, 'a typed % is plain text, not a wildcard';
+  select count(*) into n from public.master_sku_search('sp check bulk');
+  assert n = 25, 'at most 25 matches';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    select count(*) into n from public.master_sku_search('sp check cleaner');
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot search master SKUs';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.master_sku_search('sp check cleaner');
+  assert n = 2, 'VRPRIME can search too';
+  reset role;
+
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  blocked := false;
+  begin
+    select count(*) into n from public.master_sku_search('sp check cleaner');
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'a signed-out visitor cannot search master SKUs';
+  reset role;
+
+  -- =====================================================================================
+  -- 7. A deactivated supplier login, a deactivated supplier, a signed-out visitor
   -- =====================================================================================
   perform set_config('request.jwt.claims', json_build_object('sub', u_off, 'role', 'authenticated')::text, true);
   set local role authenticated;

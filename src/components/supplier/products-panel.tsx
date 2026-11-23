@@ -5,18 +5,21 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Card, Chip, EmptyState, Field, buttonClass } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
+import type { MasterSku } from "@/lib/master-search";
 import { CARTON_TYPE_LABEL, CATEGORY_LABEL, PRODUCT_CATEGORIES, parseProductsTable, parseWeight, type CartonType, type ProductCategory, type ProductInput } from "@/lib/supplier";
 import { saveProducts } from "@/server/actions/supplier";
 import type { ProductRow } from "@/server/supplier-data";
+import { MasterSkuPicker } from "./master-sku-picker";
 
-type Form = { name: string; master_code: string; category: ProductCategory; units: string; carton_type: CartonType; capacity: string; weight: string; active: boolean; editing: boolean };
-const EMPTY: Form = { name: "", master_code: "", category: "other", units: "", carton_type: "H", capacity: "", weight: "", active: true, editing: false };
+type Form = { name: string; master: MasterSku | null; category: ProductCategory; units: string; carton_type: CartonType; capacity: string; weight: string; active: boolean; editing: boolean };
+const EMPTY: Form = { name: "", master: null, category: "other", units: "", carton_type: "H", capacity: "", weight: "", active: true, editing: false };
 
 /**
  * The supplier's products: search, filter by category, add or edit one, and import the whole sheet (.xlsx or .csv).
- * `canEdit` is the supplier owner and VRPRIME's owner and admin; the warehouse person only reads.
+ * `canEdit` is the supplier owner and VRPRIME's owner and admin; the warehouse person only reads. The master SKU is
+ * picked by searching its name (`demoMasters` is only for the dev preview, which has no database).
  */
-export function ProductsPanel({ supplierId, products, canEdit, masters }: { supplierId: string; products: ProductRow[]; canEdit: boolean; masters?: { code: string; name: string }[] }) {
+export function ProductsPanel({ supplierId, products, canEdit, demoMasters }: { supplierId: string; products: ProductRow[]; canEdit: boolean; demoMasters?: { code: string; name: string }[] }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -50,7 +53,7 @@ export function ProductsPanel({ supplierId, products, canEdit, masters }: { supp
     const weight = parseWeight(form.weight);
     if (weight === "bad") return setProblems(["Carton weight must be a number of kg above 0, for example 8.5."]);
     setProblems([]);
-    save([{ name: form.name.trim(), master_code: form.master_code.trim() || null, category: form.category, units_per_carton: units, carton_type: form.carton_type, daily_capacity: capacity, active: form.active, weight_per_carton: weight }], () => setForm(null));
+    save([{ name: form.name.trim(), master_code: form.master?.code ?? null, category: form.category, units_per_carton: units, carton_type: form.carton_type, daily_capacity: capacity, active: form.active, weight_per_carton: weight }], () => setForm(null));
   };
 
   const importFile = async (file: File) => {
@@ -69,7 +72,7 @@ export function ProductsPanel({ supplierId, products, canEdit, masters }: { supp
 
   const edit = (p: ProductRow) => {
     setProblems([]);
-    setForm({ name: p.name, master_code: p.master_code ?? "", category: p.category, units: String(p.units_per_carton), carton_type: p.carton_type, capacity: p.daily_capacity === null ? "" : String(p.daily_capacity), weight: p.weight_per_carton === null ? "" : String(p.weight_per_carton), active: p.active, editing: true });
+    setForm({ name: p.name, master: p.master_code ? { code: p.master_code, name: null } : null, category: p.category, units: String(p.units_per_carton), carton_type: p.carton_type, capacity: p.daily_capacity === null ? "" : String(p.daily_capacity), weight: p.weight_per_carton === null ? "" : String(p.weight_per_carton), active: p.active, editing: true });
   };
 
   return (
@@ -132,18 +135,14 @@ export function ProductsPanel({ supplierId, products, canEdit, masters }: { supp
               <Field
                 label="VRPRIME master SKU"
                 htmlFor="sp-master"
-                hint={masters?.length ? "Start typing the code or the name and pick it from the list. Labels and stock both come from it." : "The code VRPRIME uses for this product, exactly as VRPRIME gives it. Needed before it can go on a dispatch."}
+                hint="Type part of the product's name, for example cleaner, and pick it. The list is VRPRIME's products in the inventory software; stock and labels both come from it."
               >
-                <input id="sp-master" className="input" maxLength={200} autoCapitalize="characters" autoComplete="off" list={masters?.length ? "sp-masters" : undefined} value={form.master_code} onChange={(e) => setForm({ ...form, master_code: e.target.value })} />
-                {masters?.length ? (
-                  <datalist id="sp-masters">
-                    {masters.map((m) => (
-                      <option key={m.code} value={m.code}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </datalist>
-                ) : null}
+                <MasterSkuPicker
+                  id="sp-master"
+                  value={form.master}
+                  demo={demoMasters}
+                  onChange={(m) => setForm((f) => (f ? { ...f, master: m, name: !f.editing && !f.name.trim() && m?.name ? m.name : f.name } : f))}
+                />
               </Field>
               <Field label="Category" htmlFor="sp-cat" required>
                 <select id="sp-cat" className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ProductCategory })}>
