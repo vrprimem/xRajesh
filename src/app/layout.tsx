@@ -1,14 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Poppins } from "next/font/google";
+import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { cookies } from "next/headers";
 import { ServiceWorker } from "@/components/service-worker";
 import { ToastProvider } from "@/components/toast";
 import { readThemeMode, THEME_COOKIE } from "@/lib/theme-mode";
 import "./globals.css";
 
-// Poppins for everything (regular, medium and semibold); Geist Mono only for barcodes and codes. globals.css maps
-// these onto --font-sans, --font-display and --font-mono.
-const poppins = Poppins({ variable: "--font-poppins", subsets: ["latin"], weight: ["400", "500", "600"], display: "swap" });
+// Plus Jakarta Sans for everything, as a variable font (the portal uses it bold: 500 to 800); Geist Mono only for
+// barcodes and codes. globals.css maps these onto --font-sans, --font-display and --font-mono.
+const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin"], display: "swap" });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], weight: ["400", "500"], display: "swap" });
 
 export const metadata: Metadata = {
@@ -47,7 +47,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const mode = readThemeMode((await cookies()).get(THEME_COOKIE)?.value);
   return (
     // data-theme is left off for Auto, so the CSS follows the device; the switch in the header sets it.
-    <html lang="en-IN" data-theme={mode === "auto" ? undefined : mode} className={`${poppins.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en-IN" data-theme={mode === "auto" ? undefined : mode} className={`${jakarta.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full">
         <ToastProvider>{children}</ToastProvider>
         <ServiceWorker />

@@ -3,7 +3,7 @@
 /* =====================================================================================================================
    VRPRIME Supplier Portal: "Indigo modern".
    Light and calm: white cards on a soft indigo-grey page, indigo for the main action and the page you are on, rounded
-   shapes, Poppins. Dispatch stages carry their own colours everywhere (amber to load, blue on the way, green arrived);
+   shapes, bold Plus Jakarta Sans. Dispatch stages carry their own colours everywhere (amber to load, blue on the way, green arrived);
    red is only for what is wrong. Dark is deep indigo with light ink. Auto (no data-theme on <html>) follows the phone or
    computer. Every text colour is at least 4.5:1 against its background.
    ===================================================================================================================== */
@@ -19,8 +19,8 @@
   --line: #8a8fb8;
   --line-soft: #e6e8f6;
   --ink: #1b1d3a;
-  --muted: #4a4e78;
-  --faint: #5f6390;
+  --muted: #2e3160;
+  --faint: #4a4e78;
   --accent: #4f46e5;
   --accent-hover: #4338ca;
   --accent-ink: #ffffff;
@@ -48,7 +48,7 @@
   --header: #ffffff;
   --header-raised: #f0f1fb;
   --header-ink: #1b1d3a;
-  --header-muted: #4a4e78;
+  --header-muted: #2e3160;
   --header-line: #e6e8f6;
   --hero: #4338ca;
   --hero-ink: #ffffff;
@@ -89,8 +89,8 @@
   --line: #7c81b8;
   --line-soft: #262a52;
   --ink: #eef0ff;
-  --muted: #c3c7ee;
-  --faint: #a6abdc;
+  --muted: #dadcfb;
+  --faint: #bfc3ee;
   --accent-hover: #6366f1;
   --accent-soft: #272a66;
   --accent-text: #a5b4fc;
@@ -114,7 +114,7 @@
   --header: #161834;
   --header-raised: #1d2044;
   --header-ink: #eef0ff;
-  --header-muted: #c3c7ee;
+  --header-muted: #dadcfb;
   --header-line: #262a52;
   --hero: #1d2044;
   --hero-kicker: #a5b4fc;
@@ -142,8 +142,8 @@
     --line: #7c81b8;
     --line-soft: #262a52;
     --ink: #eef0ff;
-    --muted: #c3c7ee;
-    --faint: #a6abdc;
+    --muted: #dadcfb;
+    --faint: #bfc3ee;
     --accent-hover: #6366f1;
     --accent-soft: #272a66;
     --accent-text: #a5b4fc;
@@ -167,7 +167,7 @@
     --header: #161834;
     --header-raised: #1d2044;
     --header-ink: #eef0ff;
-    --header-muted: #c3c7ee;
+    --header-muted: #dadcfb;
     --header-line: #262a52;
     --hero: #1d2044;
     --hero-kicker: #a5b4fc;
@@ -213,8 +213,8 @@
   --color-panel2: var(--panel2);
   --color-pop: var(--pop);
   --color-scrim: var(--scrim);
-  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
   --radius-card: var(--radius);
   --radius-card-lg: var(--radius-lg);
@@ -230,6 +230,7 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 16px;
+  font-weight: 500;
   line-height: 1.55;
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
@@ -247,12 +248,22 @@ kbd {
 .font-mono.font-bold {
   font-weight: 500;
 }
-/* Poppins' heaviest cuts read as shouting: bold and extra-bold settle on semibold. */
+/* Text is bold throughout: each weight the pages ask for is set one step heavier (normal 500, medium 600, semibold 700,
+   bold and extra-bold 800). Codes in the mono font keep their own weight (above). */
+.font-normal {
+  font-weight: 500;
+}
+.font-medium {
+  font-weight: 600;
+}
+.font-semibold {
+  font-weight: 700;
+}
 .font-bold,
 .font-extrabold,
 b,
 strong {
-  font-weight: 600;
+  font-weight: 800;
 }
 select option,
 select optgroup {
@@ -298,7 +309,7 @@ select optgroup {
 .vr-brand {
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1.25;
   letter-spacing: -0.01em;
 }
@@ -312,14 +323,14 @@ select optgroup {
 .vr-wordmark {
   font-family: var(--font-display);
   font-size: 46px;
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1;
   letter-spacing: -0.02em;
 }
 .vr-kicker {
   font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--hero-kicker);
@@ -329,7 +340,7 @@ select optgroup {
 .vr-nav-link {
   font-family: var(--font-display);
   font-size: 14.5px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--header-muted);
   transition: color 120ms ease-out, background-color 120ms ease-out;
 }
@@ -338,7 +349,7 @@ select optgroup {
 }
 .vr-nav-link[aria-current="page"] {
   color: var(--accent-text);
-  font-weight: 600;
+  font-weight: 800;
 }
 @media (max-width: 699.98px) {
   .vr-nav-link {
@@ -438,7 +449,7 @@ select optgroup {
   border-radius: 10px;
   font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1.15;
   text-align: center;
   color: var(--muted);
@@ -457,7 +468,7 @@ select optgroup {
   .t-h1 {
     font-family: var(--font-display);
     font-size: 28px;
-    font-weight: 600;
+    font-weight: 800;
     line-height: 1.15;
     letter-spacing: -0.02em;
     color: var(--ink);
@@ -475,13 +486,13 @@ select optgroup {
   }
   .t-headline em {
     font-style: normal;
-    font-weight: 600;
+    font-weight: 800;
     color: var(--ink);
   }
   .t-card-title {
     font-family: var(--font-display);
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 19px;
+    font-weight: 800;
     line-height: 1.3;
     letter-spacing: -0.01em;
     color: var(--ink);
@@ -491,20 +502,21 @@ select optgroup {
     line-height: 1.55;
   }
   .t-caption {
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 600;
     line-height: 1.5;
     color: var(--muted);
   }
   .t-label {
     font-size: 13.5px;
-    font-weight: 500;
+    font-weight: 700;
     line-height: 1.3;
     color: var(--muted);
   }
   /* Big numbers: counters and totals. */
   .t-score {
     font-family: var(--font-display);
-    font-weight: 600;
+    font-weight: 800;
     line-height: 1.05;
     letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
@@ -559,7 +571,7 @@ select optgroup {
     background: var(--tone-bg);
     color: var(--tone);
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1.1;
     white-space: nowrap;
   }
@@ -582,7 +594,7 @@ select optgroup {
     border-radius: var(--radius);
     font-family: var(--font-display);
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1.2;
     text-align: center;
     text-wrap: balance;
@@ -648,7 +660,7 @@ select optgroup {
     padding: 0 14px;
     border-radius: 10px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 700;
     white-space: nowrap;
   }
 
@@ -717,7 +729,7 @@ select optgroup {
     color: var(--muted);
     font-family: var(--font-display);
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     text-align: left;
     white-space: nowrap;
   }
@@ -729,7 +741,7 @@ select optgroup {
     vertical-align: middle;
   }
   .ledger tbody th {
-    font-weight: 600;
+    font-weight: 800;
     color: var(--ink);
   }
   .ledger tbody tr:hover {
@@ -744,7 +756,7 @@ select optgroup {
     font-variant-numeric: tabular-nums;
   }
   .ledger td.num {
-    font-weight: 600;
+    font-weight: 700;
   }
   /* First column stays put when a wide table scrolls sideways on a phone. */
   @media (max-width: 699.98px) {
@@ -783,7 +795,7 @@ select optgroup {
   }
   .tone-row-title {
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 800;
     line-height: 1.35;
   }
 
@@ -797,7 +809,7 @@ select optgroup {
     background: var(--stage-bg);
     color: var(--stage-ink);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 800;
     line-height: 1.25;
   }
   .stage-pill {
@@ -810,7 +822,7 @@ select optgroup {
     background: var(--stage-soft);
     color: var(--stage-text);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     white-space: nowrap;
   }
   .stage-pill:hover {
