@@ -63,6 +63,9 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
               All suppliers
             </Link>
             {isOwner(user) ? <EditSupplier supplier={supplier} warehouses={warehouses} /> : null}
+            <Link href={`${base}/production`} className={buttonClass("outline")}>
+              Production
+            </Link>
             <Link href={`${base}/reports`} className={buttonClass("outline")}>
               Reports
             </Link>

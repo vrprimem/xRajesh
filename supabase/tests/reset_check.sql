@@ -1,7 +1,8 @@
 -- Factory reset check: authenticator codes are standard TOTP; only the owner can link an app (with a recent password
 -- sign-in) and it cannot be swapped once linked; a reset needs the linked app's current code; each code works once;
--- 5 wrong codes lock codes out; 'activity' clears a test run but keeps suppliers, their logins, products, minimums and
--- the stock copy; 'everything' clears those too but keeps VRPRIME's own logins; every reset is logged.
+-- 5 wrong codes lock codes out; 'activity' clears a test run (with the supplier's production, purchases, payments and
+-- costs) but keeps suppliers, their logins, products, minimums, supplies, vendors, recipes and the stock copy;
+-- 'everything' clears those too but keeps VRPRIME's own logins; every reset is logged.
 --
 -- It runs real resets inside one transaction that is rolled back, so it leaves nothing behind. Even so it refuses to
 -- run on a database that has suppliers in it: run it on a fresh copy or the local stand-in, never on the live portal.
@@ -19,6 +20,9 @@ declare
   p uuid;
   d uuid;
   pl uuid;
+  it uuid;
+  ve uuid;
+  x uuid;
   r jsonb;
   blocked boolean;
   logged int;
@@ -69,6 +73,17 @@ begin
   insert into public.supplier_produce_requests (supplier_id, product_id, stock_units, in_transit_units, min_units, suggested_units) values (s, p, 0, 0, 100, 120);
   insert into public.notifications (user_id, kind, title) values (u_raj, 'test', 'for the supplier'), (u_own, 'test', 'for the owner');
   insert into storage.objects (bucket_id, name) values ('supplier-photos', s || '/' || d || '/rc.jpg');
+  -- The supplier's own records: a supply bought and used, a vendor paid, a cost, a recipe, production and a count.
+  insert into public.supplier_items (supplier_id, name, kind) values (s, 'RC Bottle', 'bottle') returning id into it;
+  insert into public.supplier_vendors (supplier_id, name) values (s, 'RC Vendor') returning id into ve;
+  insert into public.supplier_purchases (supplier_id, vendor_id, item_id, bought_on, qty, rate, received_on) values (s, ve, it, current_date, 100, 2, current_date) returning id into x;
+  insert into public.supplier_item_moves (supplier_id, item_id, qty, reason, purchase_id, moved_on) values (s, it, 100, 'purchase', x, current_date);
+  insert into public.supplier_payments (supplier_id, vendor_id, paid_on, amount) values (s, ve, current_date, 50);
+  insert into public.supplier_costs (supplier_id, spent_on, kind, amount) values (s, current_date, 'hamali', 120);
+  insert into public.supplier_recipes (product_id, item_id, supplier_id, qty) values (p, it, s, 1);
+  insert into public.supplier_production (supplier_id, product_id, made_on, units) values (s, p, current_date, 40) returning id into x;
+  insert into public.supplier_item_moves (supplier_id, item_id, qty, reason, production_id, moved_on) values (s, it, -40, 'production', x, current_date);
+  insert into public.supplier_stock_counts (supplier_id, product_id, counted_on, counted, diff) values (s, p, current_date, 40, 0);
   -- The admin even has a linked app of their own here, so only the owner check can stop them below.
   insert into private.reset_authenticators (user_id, secret, confirmed_at) values (u_adm, rfc, now());
 
@@ -167,6 +182,14 @@ begin
   assert (select count(*) from public.inventory_stock where code = 'RC-1') = 1, 'activity: stock copy kept';
   assert (r -> 'counts' ->> 'dispatches')::int = 1 and (r -> 'counts' ->> 'cartons')::int = 2 and (r -> 'counts' ->> 'send_plans')::int = 1, 'activity: counts ' || r::text;
   assert r -> 'photos' = jsonb_build_array(s || '/' || d || '/rc.jpg'), 'the photo paths come back for the app to remove';
+  assert (select count(*) from public.supplier_production) + (select count(*) from public.supplier_stock_counts) + (select count(*) from public.supplier_item_moves) = 0,
+    'activity: production, counts and supply moves gone';
+  assert (select count(*) from public.supplier_purchases) + (select count(*) from public.supplier_payments) + (select count(*) from public.supplier_costs) = 0,
+    'activity: purchases, payments and costs gone';
+  assert (select count(*) from public.supplier_items where id = it) = 1 and (select count(*) from public.supplier_vendors where id = ve) = 1
+     and (select count(*) from public.supplier_recipes where item_id = it) = 1, 'activity: supplies, vendors and recipes kept';
+  assert (r -> 'counts' ->> 'production')::int = 1 and (r -> 'counts' ->> 'purchases')::int = 1 and (r -> 'counts' ->> 'payments')::int = 1
+     and (r -> 'counts' ->> 'costs')::int = 1, 'activity: counts of the supplier''s records ' || r::text;
 
   -- The code just used cannot be used again.
   set local role authenticated;
@@ -186,6 +209,9 @@ begin
   assert (select count(*) from public.supplier_products) = 0 and (select count(*) from public.supplier_thresholds) = 0, 'everything: products and minimums gone';
   assert (select count(*) from public.master_products) = 0 and (select count(*) from public.warehouses) = 0 and (select count(*) from public.inventory_stock) = 0, 'everything: stock copy gone';
   assert (r -> 'counts' ->> 'suppliers')::int = 1 and (r -> 'counts' ->> 'supplier_logins')::int = 1 and (r -> 'counts' ->> 'products')::int = 1, 'everything: counts ' || r::text;
+  assert (select count(*) from public.supplier_items) + (select count(*) from public.supplier_vendors) + (select count(*) from public.supplier_recipes) = 0,
+    'everything: supplies, vendors and recipes gone';
+  assert (r -> 'counts' ->> 'supplies')::int = 1 and (r -> 'counts' ->> 'vendors')::int = 1, 'everything: counts of supplies and vendors ' || r::text;
   assert (select last_try_at > now() - interval '1 minute' from public.inventory_sync_state where id), 'everything: the stock copy is read again straight away';
   assert (select count(*) from private.factory_resets) = logged + 2, 'both resets are logged';
   assert (select array_agg(scope order by id) from (select id, scope from private.factory_resets order by id desc limit 2) x) = array['activity', 'everything'], 'the log has both levels';

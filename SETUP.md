@@ -16,7 +16,7 @@ You need: a Supabase account, a GitHub account, a Vercel account, and a login fo
 
 ## 2. Create the tables
 
-In the SQL Editor, run these four files from `supabase/migrations`, in this order, each as its own query
+In the SQL Editor, run every file in `supabase/migrations`, in this order (the order of their names), each as its own query
 (open the file, copy all of it, paste, Run). Each should end with "Success". Supabase may warn that a file creates
 tables without Row Level Security or drops things: the files switch RLS on themselves and drop only their own helpers.
 
@@ -24,6 +24,15 @@ tables without Row Level Security or drops things: the files switch RLS on thems
 2. `20261123101000_vrprime_stock.sql`
 3. `20261123102000_supplier_portal.sql`
 4. `20261123103000_inventory_labels.sql`
+5. `20261123104000_carton_weight.sql`
+6. `20261123105000_dispatch_due.sql`
+7. `20261123106000_send_plans.sql`
+8. `20261123107000_factory_reset.sql`
+9. `20261123108000_factory_reset_authenticator.sql`
+10. `20261123109000_factory_reset_where.sql`
+11. `20261123110000_master_sku_search.sql`
+12. `20261123111000_supplier_supplies_money.sql`
+13. `20261123112000_supplier_production.sql`
 
 Then tell the database where its functions live. Run this with your own project ref in place of `<project-ref>`:
 
@@ -115,6 +124,17 @@ the phone reads them.
 - Start a sync by hand: `select private.start_inventory_sync();`
 - Run the Produce now check by hand: `select private.supplier_produce_check();`
 - Function logs: Edge Functions > the function > Logs.
+
+## Supplies, production and money
+
+The supplier enters its supplies (bottles, triggers, chemicals, cartons), what it buys and pays its vendors, labour,
+hamali and other costs, and what it makes each day. Who sees what is fixed in the database, not only in the app:
+
+- Money (vendors, purchases, payments, costs, cost per unit): the supplier's owner login only. Not its warehouse person,
+  not VRPRIME's owner or admin.
+- Supplies and their stock, recipes, production, ready stock and when send plans can be ready: the supplier's logins
+  and VRPRIME's owner and admin (VRPRIME: supplier page > Production). None of it carries a price.
+- `supabase/tests/supplier_check.sql` (section 7) proves both.
 
 ## Factory reset
 

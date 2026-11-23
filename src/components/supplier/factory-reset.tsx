@@ -15,13 +15,13 @@ const LEVELS: { scope: Scope; title: string; deletes: string; keeps: string }[] 
   {
     scope: "activity",
     title: "Clear test activity",
-    deletes: "dispatches, carton labels and scans, send plans, produce requests, alerts and vehicle photos.",
-    keeps: "suppliers, their logins, products, minimums and VRPRIME's stock.",
+    deletes: "dispatches, carton labels and scans, send plans, produce requests, alerts and vehicle photos, and each supplier's production, stock counts, purchases, payments, labour, hamali and other costs.",
+    keeps: "suppliers, their logins, products, minimums, supplies, vendors, recipes and VRPRIME's stock.",
   },
   {
     scope: "everything",
     title: "Factory reset: everything",
-    deletes: "all of the above, plus suppliers, their logins, products, minimums and the copy of VRPRIME's stock (read again from the inventory software straight away).",
+    deletes: "all of the above, plus suppliers, their logins, products, minimums, supplies, vendors, recipes and the copy of VRPRIME's stock (read again from the inventory software straight away).",
     keeps: "your login and VRPRIME's admin logins.",
   },
 ];
@@ -35,6 +35,12 @@ function summary(counts: Record<string, number>): string {
     ["dispatches", "dispatch", "dispatches"],
     ["cartons", "carton"],
     ["send_plans", "send plan"],
+    ["production", "production entry", "production entries"],
+    ["purchases", "purchase"],
+    ["payments", "payment"],
+    ["costs", "cost"],
+    ["supplies", "supply", "supplies"],
+    ["vendors", "vendor"],
     ["alerts", "alert"],
     ["photos", "photo"],
   ];

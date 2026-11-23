@@ -1,5 +1,6 @@
 -- Supplier portal check: a supplier login sees its own supplier and nothing else; one supplier never sees another's data;
--- labels (printed by the inventory software), scanning, closing, arrivals, thresholds and "Produce now" behave as planned.
+-- labels (printed by the inventory software), scanning, closing, arrivals, thresholds and "Produce now" behave as planned;
+-- supplies, production and ready stock are the supplier's and VRPRIME's to see, the money the supplier's owner's alone.
 --
 -- Runs in one transaction that is rolled back, so it is safe on production and leaves nothing behind.
 -- Any failed check raises an error.
@@ -42,6 +43,16 @@ declare
   blocked boolean;
   t text;
   path text;
+  i_bottle uuid;
+  i_trig uuid;
+  i_chem uuid;
+  i_box uuid;
+  v_a uuid;
+  v_b uuid;
+  pu uuid;
+  co uuid;
+  pr1 uuid;
+  num numeric;
 begin
   insert into public.warehouses (name, vrprime_id) values ('SP Check Main', 'spchk-1') returning id into w_main;
   insert into public.warehouses (name, vrprime_id) values ('SP Check Other', 'spchk-2') returning id into w_other;
@@ -654,7 +665,247 @@ begin
   reset role;
 
   -- =====================================================================================
-  -- 7. A deactivated supplier login, a deactivated supplier, a signed-out visitor
+  -- 7. Supplies, money, production and ready stock
+  -- =====================================================================================
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  blocked := false;
+  begin
+    perform public.supplier_item_save(s_b, jsonb_build_object('name', 'SP Sneaky', 'kind', 'bottle'));
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'a supplier cannot add supplies to another supplier';
+  i_bottle := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Bottle 500ml', 'kind', 'bottle', 'unit', 'pcs', 'low_level', 100));
+  i_trig := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Trigger', 'kind', 'trigger'));
+  i_chem := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Kitchen chemical', 'kind', 'chemical', 'unit', 'litre'));
+  i_box := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Hard carton', 'kind', 'carton_hard'));
+  blocked := false;
+  begin
+    perform public.supplier_item_save(s_a, jsonb_build_object('name', ' sp bottle 500ML ', 'kind', 'bottle'));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'two supplies cannot share a name';
+  blocked := false;
+  begin
+    perform public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Odd', 'kind', 'bottle', 'unit', 'dozen'));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'an unknown unit is refused';
+
+  -- Vendors, purchases, payments and costs: the supplier's owner's.
+  v_a := public.supplier_vendor_save(s_a, jsonb_build_object('name', 'SP Plastics', 'phone', '98200 00000'));
+  v_b := public.supplier_vendor_save(s_a, jsonb_build_object('name', 'SP Chemicals'));
+  -- 1,000 bottles at 4.50 + 18% GST = 5,310, received today.
+  pu := public.supplier_purchase_save(s_a, jsonb_build_object('vendor_id', v_a, 'item_id', i_bottle, 'bought_on', current_date, 'qty', 1000, 'rate', 4.5, 'gst_pct', 18, 'received_on', current_date));
+  assert (select amount from public.supplier_purchases where id = pu) = 5310, 'a purchase''s amount is quantity x rate + GST';
+  -- 1,000 triggers at 3, ordered but not received yet.
+  perform public.supplier_purchase_save(s_a, jsonb_build_object('vendor_id', v_a, 'item_id', i_trig, 'bought_on', current_date, 'qty', 1000, 'rate', 3));
+  perform public.supplier_purchase_save(s_a, jsonb_build_object('vendor_id', v_b, 'item_id', i_chem, 'bought_on', current_date, 'qty', 200, 'rate', 50, 'received_on', current_date));
+  perform public.supplier_purchase_save(s_a, jsonb_build_object('vendor_id', v_b, 'item_id', i_box, 'bought_on', current_date, 'qty', 100, 'rate', 20, 'received_on', current_date));
+  perform public.supplier_payment_save(s_a, jsonb_build_object('vendor_id', v_a, 'paid_on', current_date, 'amount', 2000, 'mode', 'upi'));
+  co := public.supplier_cost_save(s_a, jsonb_build_object('spent_on', current_date, 'kind', 'labour', 'qty', 4, 'rate', 500));
+  assert (select amount from public.supplier_costs where id = co) = 2000, 'labour: 4 workers at 500 is 2,000';
+  perform public.supplier_cost_save(s_a, jsonb_build_object('spent_on', current_date, 'kind', 'hamali', 'amount', 350.5));
+  blocked := false;
+  begin
+    perform public.supplier_cost_save(s_a, jsonb_build_object('spent_on', current_date, 'kind', 'labour', 'qty', 4));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a count needs its rate';
+  blocked := false;
+  begin
+    perform public.supplier_purchase_save(s_a, jsonb_build_object('vendor_id', v_a, 'item_id', i_bottle, 'bought_on', current_date, 'qty', 10, 'rate', 1, 'received_on', current_date - 1));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'goods cannot arrive before they were bought';
+  blocked := false;
+  begin
+    perform public.supplier_payment_save(s_a, jsonb_build_object('vendor_id', v_a, 'paid_on', current_date + 60, 'amount', 1));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a payment two months ahead is refused';
+
+  select due into num from public.supplier_vendor_balances(s_a) where id = v_a;
+  assert num = 5310 + 3000 - 2000, 'a vendor''s dues are what was bought minus what was paid: ' || num;
+  select count(*) into n from public.supplier_vendor_balances(s_a);
+  assert n = 2, 'both vendors are listed';
+
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_bottle;
+  assert num = 1000, 'received bottles are in stock';
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_trig;
+  assert num = 0, 'triggers not received yet are not in stock';
+  -- They arrive: the purchase is changed, and the stock follows it.
+  perform public.supplier_purchase_save(s_a, (select jsonb_build_object('id', id, 'vendor_id', vendor_id, 'item_id', item_id, 'bought_on', bought_on, 'qty', qty, 'rate', rate, 'received_on', current_date)
+                                              from public.supplier_purchases where item_id = i_trig));
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_trig;
+  assert num = 1000, 'triggers are in stock once received';
+  select count(*) into n from public.supplier_item_moves where item_id = i_trig;
+  assert n = 1, 'a changed purchase keeps one stock move';
+
+  -- The warehouse person: supplies and their stock, no money.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.supplier_items;
+  assert n = 4, 'the warehouse person sees the supplies';
+  select (select count(*) from public.supplier_purchases) + (select count(*) from public.supplier_payments)
+       + (select count(*) from public.supplier_costs) + (select count(*) from public.supplier_vendors) into n;
+  assert n = 0, 'the warehouse person sees no purchases, payments, costs or vendors';
+  blocked := false;
+  begin
+    perform public.supplier_vendor_balances(s_a);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot see what is owed';
+  blocked := false;
+  begin
+    perform public.supplier_cost_save(s_a, jsonb_build_object('spent_on', current_date, 'kind', 'hamali', 'amount', 10));
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot enter costs';
+  blocked := false;
+  begin
+    perform public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Scanner item'));
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot add supplies';
+  num := public.supplier_item_count(i_box, 90, 'counted');
+  assert num = -10, 'a count sets the stock: 100 counted as 90';
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_box;
+  assert num = 90, 'the count stands';
+
+  -- VRPRIME: the supplies and their stock (no prices), none of the money.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.supplier_items where supplier_id = s_a;
+  assert n = 4, 'VRPRIME sees the supplies';
+  select (select count(*) from public.supplier_purchases) + (select count(*) from public.supplier_payments)
+       + (select count(*) from public.supplier_costs) + (select count(*) from public.supplier_vendors) into n;
+  assert n = 0, 'VRPRIME sees none of the supplier''s purchases, payments, costs or vendors';
+  blocked := false;
+  begin
+    perform public.supplier_vendor_balances(s_a);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'VRPRIME cannot see what the supplier owes';
+  blocked := false;
+  begin
+    perform public.supplier_payment_save(s_a, jsonb_build_object('vendor_id', v_a, 'paid_on', current_date, 'amount', 1));
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'VRPRIME cannot enter the supplier''s payments';
+
+  -- Another supplier: nothing.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  select (select count(*) from public.supplier_items) + (select count(*) from public.supplier_item_moves) into n;
+  assert n = 0, 'another supplier sees none of these supplies';
+  blocked := false;
+  begin
+    perform public.supplier_item_count(i_box, 1);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot count these supplies';
+  blocked := false;
+  begin
+    perform public.supplier_purchase_delete(pu);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot remove these purchases';
+
+  -- Recipes and production: 1 bottle, 1 trigger and 0.5 litre a unit; 1 hard carton per carton of 20.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  n := public.supplier_recipe_save(p_a, jsonb_build_array(
+    jsonb_build_object('item_id', i_bottle, 'qty', 1, 'per', 'unit'),
+    jsonb_build_object('item_id', i_trig, 'qty', 1),
+    jsonb_build_object('item_id', i_chem, 'qty', 0.5),
+    jsonb_build_object('item_id', i_box, 'qty', 1, 'per', 'carton')));
+  assert n = 4, 'the recipe has four supplies';
+  blocked := false;
+  begin
+    perform public.supplier_recipe_save(p_a, jsonb_build_array(jsonb_build_object('item_id', i_bottle, 'qty', 1), jsonb_build_object('item_id', i_bottle, 'qty', 2)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a supply cannot be in a recipe twice';
+  assert (select count(*) from public.supplier_recipes where product_id = p_a) = 4, 'a refused recipe leaves the old one';
+
+  pr1 := public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date, 'units', 100));
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_bottle;
+  assert num = 900, '100 units made use 100 bottles';
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_chem;
+  assert num = 150, '... and 50 litres';
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_box;
+  assert num = 85, '... and 5 cartons of 20';
+  perform public.supplier_production_save(jsonb_build_object('id', pr1, 'product_id', p_a, 'made_on', current_date, 'units', 40));
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_box;
+  assert num = 88, 'a changed entry takes what the new figure used: 2 cartons';
+  perform public.supplier_production_delete(pr1);
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_bottle;
+  assert num = 1000, 'a removed entry gives its supplies back';
+  blocked := false;
+  begin
+    perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date + 1, 'units', 10));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'production cannot be entered for tomorrow';
+  blocked := false;
+  begin
+    perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date, 'units', 1.5));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'units made are whole';
+
+  -- Ready stock: made, minus what was loaded since the first production day, plus counts.
+  perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date, 'units', 500));
+  perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date - 1, 'units', 300));
+  select coalesce(sum(k.units), 0) into n from public.supplier_cartons k join public.supplier_dispatches d on d.id = k.dispatch_id
+   where k.product_id = p_a and k.status = 'loaded' and d.status <> 'cancelled';
+  assert n > 0, 'the check has loaded cartons to take off';
+  assert (select ready from public.supplier_ready_stock(s_a) where product_id = p_a) = 800 - n, 'ready stock is made minus loaded';
+  assert (select made_7d = 800 and made_30d = 800 and days_30d = 2 and last_made_on = current_date from public.supplier_ready_stock(s_a) where product_id = p_a),
+    'made in the last 7 and 30 days, on 2 days';
+  reset role;
+  update public.supplier_cartons set loaded_at = now() - interval '5 days' where product_id = p_a and status = 'loaded';
+  set local role authenticated;
+  assert (select ready from public.supplier_ready_stock(s_a) where product_id = p_a) = 800, 'goods loaded before the first production day are not taken off';
+  n := public.supplier_stock_count(p_a, 750, 'counted');
+  assert n = -50, 'a count corrects the ready stock: 800 counted as 750';
+  assert (select ready from public.supplier_ready_stock(s_a) where product_id = p_a) = 750, 'the count stands';
+  -- A first count starts the tracking that day; what was loaded earlier the same day is already out of the count.
+  perform public.supplier_stock_count(p_a2, 30);
+  assert (select ready from public.supplier_ready_stock(s_a) where product_id = p_a2) = 30, 'a first count is the ready stock';
+
+  -- The warehouse person enters production and counts, not recipes.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date, 'units', 10));
+  assert (select ready from public.supplier_ready_stock(s_a) where product_id = p_a) = 760, 'the warehouse person''s production counts';
+  blocked := false;
+  begin
+    perform public.supplier_recipe_save(p_a, '[]'::jsonb);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot change recipes';
+
+  -- VRPRIME sees production and ready stock; another supplier does not.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.supplier_production where supplier_id = s_a;
+  assert n = 3, 'VRPRIME sees every production entry';
+  assert (select ready from public.supplier_ready_stock(s_a) where product_id = p_a) = 760, 'VRPRIME sees the ready stock';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  select (select count(*) from public.supplier_production) + (select count(*) from public.supplier_recipes) + (select count(*) from public.supplier_stock_counts) into n;
+  assert n = 0, 'another supplier sees none of this production';
+  blocked := false;
+  begin
+    perform public.supplier_ready_stock(s_a);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot read this ready stock';
+  blocked := false;
+  begin
+    perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date, 'units', 10));
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot enter this production';
+  reset role;
+
+  -- =====================================================================================
+  -- 8. A deactivated supplier login, a deactivated supplier, a signed-out visitor
   -- =====================================================================================
   perform set_config('request.jwt.claims', json_build_object('sub', u_off, 'role', 'authenticated')::text, true);
   set local role authenticated;
