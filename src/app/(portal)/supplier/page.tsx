@@ -5,14 +5,11 @@ import { MonthCartons } from "@/components/supplier/dispatch-list";
 import { PlanList } from "@/components/supplier/plan-list";
 import { ProduceList } from "@/components/supplier/produce-list";
 import { StockTable } from "@/components/supplier/stock-table";
-import { StatTile } from "@/components/supplier/entry-kit";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
-import { addDays, formatDate, formatINR, formatNumber, noun, todayIST } from "@/lib/format";
+import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { CARTON_TYPE_LABEL, dispatchCounts } from "@/lib/supplier";
-import { isLow } from "@/lib/supplies";
 import { loadDispatches, loadPlans, loadProduce, loadStock } from "@/server/supplier-data";
-import { loadItemStock, loadOwed, loadProduction } from "@/server/supplies-data";
 
 export const metadata: Metadata = { title: "Supplier portal" };
 
@@ -23,19 +20,9 @@ export const metadata: Metadata = { title: "Supplier portal" };
 export default async function SupplierHome() {
   const user = await requirePortalUser();
   const owner = user.role === "supplier_owner";
+  const [plans, produce, dispatches, stock] = await Promise.all([
+    loadPlans(user.supplierId, true),owner ? loadProduce(user.supplierId) : [], loadDispatches(user.supplierId), owner ? loadStock(user.supplierId) : []]);
   const today = todayIST();
-  const [plans, produce, dispatches, stock, made, supplies, owed] = await Promise.all([
-    loadPlans(user.supplierId, true),
-    owner ? loadProduce(user.supplierId) : [],
-    loadDispatches(user.supplierId),
-    owner ? loadStock(user.supplierId) : [],
-    loadProduction(user.supplierId, addDays(today, -6)),
-    loadItemStock(user.supplierId),
-    owner ? loadOwed(user.supplierId) : 0,
-  ]);
-  const madeToday = made.filter((e) => e.made_on === today).reduce((sum, e) => sum + e.units, 0);
-  const madeWeek = made.reduce((sum, e) => sum + e.units, 0);
-  const low = supplies.items.filter((i) => i.active && isLow(i));
   const open = dispatches.filter((d) => d.status === "planned" || d.status === "loading").sort((a, b) => a.due_on.localeCompare(b.due_on));
   const next = open[0] ?? null;
   const counts = next ? dispatchCounts(next.lines, next.cartons) : null;
@@ -44,25 +31,6 @@ export default async function SupplierHome() {
   return (
     <div className="flex flex-col gap-4">
       <PageTitle title={owner ? "Today" : "Dispatches"} sub={owner ? (waiting ? `${waiting} ${waiting === 1 ? "thing needs" : "things need"} your answer` : "Nothing is waiting for an answer") : "Scan every carton as it is loaded"} />
-
-      {supplies.installed ? (
-        <Card className="g-pad">
-          <SectionHead
-            title="Your factory"
-            action={
-              <Link href="/supplier/production" className={buttonClass("primary")}>
-                Enter production
-              </Link>
-            }
-          />
-          <div className="grid grid-cols-2 gap-x-3 gap-y-4 min-[700px]:grid-cols-4">
-            <StatTile label="Made today" value={formatNumber(madeToday)} sub="units" />
-            <StatTile label="Last 7 days" value={formatNumber(madeWeek)} sub="units" />
-            <StatTile label="Supplies low" value={formatNumber(low.length)} sub={low.length ? low.slice(0, 2).map((i) => i.name).join(", ") + (low.length > 2 ? " ..." : "") : "none"} tone={low.length ? "bad" : undefined} />
-            {owner ? <StatTile label="Owed to vendors" value={formatINR(owed)} sub={<Link href="/supplier/money" className="underline underline-offset-4">Money</Link>} tone={owed > 0 ? "bad" : undefined} /> : null}
-          </div>
-        </Card>
-      ) : null}
 
       <Card className="g-pad">
         <SectionHead title="What VRPRIME wants next" sub={owner ? "Make these, tell VRPRIME how far you are, and make the dispatch when ready." : "What VRPRIME has asked for next."} />

@@ -125,15 +125,16 @@ the phone reads them.
 - Run the Produce now check by hand: `select private.supplier_produce_check();`
 - Function logs: Edge Functions > the function > Logs.
 
-## Supplies, production and money
+## Supplies, production and money (in testing)
 
-The supplier enters its supplies (bottles, triggers, chemicals, cartons), what it buys and pays its vendors, labour,
-hamali and other costs, and what it makes each day. Who sees what is fixed in the database, not only in the app:
+The database part is in place (files 12 and 13 above, applied to the live project), but the screens are not on the
+live site yet: they are being tested on the `phase-2` branch, on a local copy only. Until they go live, nothing in the
+app reads or writes these tables. Who will see what is fixed in the database, not only in the app:
 
 - Money (vendors, purchases, payments, costs, cost per unit): the supplier's owner login only. Not its warehouse person,
   not VRPRIME's owner or admin.
 - Supplies and their stock, recipes, production, ready stock and when send plans can be ready: the supplier's logins
-  and VRPRIME's owner and admin (VRPRIME: supplier page > Production). None of it carries a price.
+  and VRPRIME's owner and admin. None of it carries a price.
 - `supabase/tests/supplier_check.sql` (section 7) proves both.
 
 ## Factory reset

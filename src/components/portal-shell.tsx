@@ -12,7 +12,7 @@ import { readThemeMode, THEME_COOKIE } from "@/lib/theme-mode";
  * The frame every signed-in page sits in: a black header band with who you are, the colour-mode switch and the links
  * you may use (a row in the header on wide screens, a bar at the bottom on phones), and the page.
  */
-export async function PortalShell({ home, title, sub, links, more, children }: { home: string; title: string; sub: string; links: PortalLink[]; more?: string; children: ReactNode }) {
+export async function PortalShell({ home, title, sub, links, children }: { home: string; title: string; sub: string; links: PortalLink[]; children: ReactNode }) {
   const theme = readThemeMode((await cookies()).get(THEME_COOKIE)?.value);
   return (
     <div className="min-h-dvh">
@@ -34,7 +34,7 @@ export async function PortalShell({ home, title, sub, links, more, children }: {
           </div>
         </div>
         <div className="mx-auto max-w-[980px] px-4">
-          <PortalNav links={links} home={home} more={more} />
+          <PortalNav links={links} home={home} />
         </div>
       </header>
       <main className="mx-auto max-w-[980px] px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-6 min-[700px]:pb-14 print:max-w-none print:p-0">{children}</main>
