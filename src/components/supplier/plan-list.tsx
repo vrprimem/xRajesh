@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { WithPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Chip, buttonClass } from "@/components/ui";
 import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
@@ -24,7 +25,7 @@ const ANSWERS: { status: "accepted" | "in_production" | "ready"; label: string }
  *   who = "vrprime"  VRPRIME: read the answers, cancel
  * \`dispatchBase\` is where this person's dispatches live.
  */
-export function PlanList({ plans, who, dispatchBase }: { plans: PlanRow[]; who: "owner" | "scanner" | "vrprime"; dispatchBase: string }) {
+export function PlanList({ plans, who, dispatchBase, photos = {} }: { plans: PlanRow[]; who: "owner" | "scanner" | "vrprime"; dispatchBase: string; photos?: Record<string, string> }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -55,8 +56,10 @@ export function PlanList({ plans, who, dispatchBase }: { plans: PlanRow[]; who: 
                 {p.lines.map((l) => (
                   <tr key={`${l.product_id}-${l.carton_type}`} className="border-t border-line-soft">
                     <th scope="row" className="py-1.5 pr-2 text-left font-semibold">
-                      {l.product}
-                      <span className="ml-1 font-normal text-muted">{CARTON_TYPE_LABEL[l.carton_type]}</span>
+                      <WithPhoto src={photos[l.product_id]} name={l.product}>
+                        {l.product}
+                        <span className="ml-1 font-normal text-muted">{CARTON_TYPE_LABEL[l.carton_type]}</span>
+                      </WithPhoto>
                     </th>
                     <td className="py-1.5 text-right tabular-nums">
                       <b>{formatNumber(l.cartons)}</b> {noun(l.cartons, "carton")}

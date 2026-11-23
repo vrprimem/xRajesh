@@ -22,7 +22,7 @@ const LEVELS: { scope: Scope; title: string; deletes: string; keeps: string }[] 
     scope: "everything",
     title: "Factory reset: everything",
     deletes: "all of the above, plus suppliers, their logins, products, minimums, supplies, vendors, recipes and the copy of VRPRIME's stock (read again from the inventory software straight away).",
-    keeps: "your login and VRPRIME's admin logins.",
+    keeps: "your login, VRPRIME's admin logins and the product photos.",
   },
 ];
 

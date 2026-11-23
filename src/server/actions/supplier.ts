@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { canManage, getActiveUser, getPortalUser } from "@/lib/auth";
+import { PHOTO_FILE } from "@/lib/photos";
 import { logError, redactSecrets } from "@/lib/redact";
 import { adminErrorMessage, getAdmin } from "@/lib/supabase/admin";
 import { MAX_PRODUCT_ROWS, PRODUCT_CATEGORIES, isCartonBarcode, type ProductInput, type ScanAnswer } from "@/lib/supplier";
@@ -461,4 +462,41 @@ export async function planToDispatch(planId: unknown): Promise<ActionResult<stri
   if (error) return failed(error, "make the dispatch");
   refresh();
   return { ok: true, message: "Dispatch made. Its labels are being printed.", data: data as string };
+}
+
+// ---- Product photos: VRPRIME owner and admin -----------------------------------------------------------------------------
+
+/** Puts an uploaded photo file on a master SKU, replacing (and removing) the one before. */
+export async function setMasterPhoto(code: unknown, path: unknown): Promise<ActionResult> {
+  const denied = await staff();
+  if (denied) return denied;
+  if (typeof code !== "string" || !code.trim() || code.length > 200 || typeof path !== "string" || !PHOTO_FILE.test(path)) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("master_photo_set", { p_code: code, p_path: path });
+  if (error) {
+    await db.storage.from("product-photos").remove([path]);
+    return failed(error, "save the photo");
+  }
+  if (typeof data === "string" && PHOTO_FILE.test(data)) {
+    const { error: removeError } = await db.storage.from("product-photos").remove([data]);
+    if (removeError) logError("old product photo", removeError);
+  }
+  refresh();
+  return { ok: true, message: "Photo saved" };
+}
+
+/** Takes a master SKU's photo away (and its file). */
+export async function removeMasterPhoto(code: unknown): Promise<ActionResult> {
+  const denied = await staff();
+  if (denied) return denied;
+  if (typeof code !== "string" || !code.trim() || code.length > 200) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("master_photo_remove", { p_code: code });
+  if (error) return failed(error, "remove the photo");
+  if (typeof data === "string" && PHOTO_FILE.test(data)) {
+    const { error: removeError } = await db.storage.from("product-photos").remove([data]);
+    if (removeError) logError("removed product photo", removeError);
+  }
+  refresh();
+  return { ok: true, message: "Photo removed" };
 }

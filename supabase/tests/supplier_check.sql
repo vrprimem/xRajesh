@@ -53,6 +53,9 @@ declare
   co uuid;
   pr1 uuid;
   num numeric;
+  ph1 text;
+  ph2 text;
+  stored boolean;
 begin
   insert into public.warehouses (name, vrprime_id) values ('SP Check Main', 'spchk-1') returning id into w_main;
   insert into public.warehouses (name, vrprime_id) values ('SP Check Other', 'spchk-2') returning id into w_other;
@@ -905,7 +908,95 @@ begin
   reset role;
 
   -- =====================================================================================
-  -- 8. A deactivated supplier login, a deactivated supplier, a signed-out visitor
+  -- 8. Product photos: one per master SKU; VRPRIME sets them, a supplier with that product sees them
+  -- =====================================================================================
+  reset role;
+  ph1 := gen_random_uuid()::text || '.jpg';
+  ph2 := gen_random_uuid()::text || '.jpg';
+  -- A photo for the master SKU of Rajesh's product, and one for a master SKU no supplier has. Put in directly: the
+  -- files themselves are not needed to check who sees what.
+  insert into public.master_photos (code, path) values ('SPCHK-1', ph1), ('SPCHK-X', gen_random_uuid()::text || '.jpg');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into n from public.master_photos;
+  assert n = 1, 'a supplier sees the photos of its own products'' master SKUs only';
+  assert (select x.path from public.supplier_product_photos(s_a) x where x.product_id = p_a) = ph1, 'its product comes with its photo';
+  assert private.can_see_photo_file(ph1), 'the supplier may open its product''s photo file';
+  blocked := false;
+  begin
+    perform public.master_photo_set('SPCHK-1', ph2);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'a supplier cannot set photos';
+  blocked := false;
+  begin
+    perform public.master_photo_remove('SPCHK-1');
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'a supplier cannot remove photos';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.master_photos;
+  assert n = 1, 'the warehouse person sees them too';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.master_photos;
+  assert n = 0, 'another supplier sees none of them';
+  assert not private.can_see_photo_file(ph1), 'nor may it open the file';
+  blocked := false;
+  begin
+    perform public.supplier_product_photos(s_a);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot list them';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.master_photos where code in ('SPCHK-1', 'SPCHK-X');
+  assert n = 2, 'VRPRIME sees every photo';
+  blocked := false;
+  begin
+    perform public.master_photo_set('SPCHK-1', ph2);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a photo whose file never arrived is refused';
+  blocked := false;
+  begin
+    perform public.master_photo_set('SPCHK-NO-SUCH', ph1);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'an unknown master SKU is refused';
+  reset role;
+  -- With the new file there (where SQL may add one: the live database may not let it), a new photo replaces the old
+  -- one and hands back the old file for the app to remove.
+  begin
+    insert into storage.objects (bucket_id, name) values ('product-photos', ph2);
+    stored := true;
+  exception when others then
+    stored := false;
+  end;
+  set local role authenticated;
+  if stored then
+    assert public.master_photo_set('SPCHK-1', ph2) = ph1, 'replacing a photo hands back the old file';
+    assert (select f.path from public.master_photos f where f.code = 'SPCHK-1') = ph2, 'the new photo is in place';
+  end if;
+  assert public.master_photo_remove('SPCHK-X') is not null, 'removing a photo hands back its file';
+  assert not exists (select 1 from public.master_photos where code = 'SPCHK-X'), 'and the photo is gone';
+  reset role;
+
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  blocked := false;
+  begin
+    select count(*) into n from public.master_photos;
+    blocked := n = 0;
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'a signed-out visitor sees no photos';
+  reset role;
+
+  -- =====================================================================================
+  -- 9. A deactivated supplier login, a deactivated supplier, a signed-out visitor
   -- =====================================================================================
   perform set_config('request.jwt.claims', json_build_object('sub', u_off, 'role', 'authenticated')::text, true);
   set local role authenticated;

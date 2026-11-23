@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
+import { WithPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Card, Chip, SectionHead, buttonClass } from "@/components/ui";
 import { formatDate, formatDateTime, formatNumber, noun } from "@/lib/format";
@@ -40,7 +41,7 @@ function TypeCounter({ type, planned, loaded, left }: { type: CartonType; planne
  *   who = "scanner"  the supplier's warehouse person: scan, labels, photo, close
  *   who = "vrprime"  VRPRIME owner and admin: read, and mark a closed dispatch received
  */
-export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; who: "owner" | "scanner" | "vrprime"; base: string }) {
+export function DispatchPanel({ detail, who, base, photos = {} }: { detail: DispatchDetail; who: "owner" | "scanner" | "vrprime"; base: string; photos?: Record<string, string> }) {
   const { dispatch: d, lines, cartons, photoUrl } = detail;
   const router = useRouter();
   const toast = useToast();
@@ -264,7 +265,9 @@ export function DispatchPanel({ detail, who, base }: { detail: DispatchDetail; w
           <tbody>
             {lines.map((l) => (
               <tr key={`${l.product_id}-${l.carton_type}`}>
-                <th scope="row" className="text-left font-semibold">{l.product}</th>
+                <th scope="row" className="text-left font-semibold">
+                  <WithPhoto src={photos[l.product_id]} name={l.product} />
+                </th>
                 <td>{CARTON_TYPE_LABEL[l.carton_type]}</td>
                 <td className="num tabular-nums">{formatNumber(l.units_per_carton)}</td>
                 <td className="num tabular-nums">{formatNumber(l.cartons)}</td>

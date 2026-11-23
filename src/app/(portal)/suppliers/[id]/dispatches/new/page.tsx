@@ -4,7 +4,7 @@ import { DispatchForm } from "@/components/supplier/dispatch-form";
 import { PageTitle } from "@/components/ui";
 import { canManage, requireUser } from "@/lib/auth";
 import { addDays, todayIST } from "@/lib/format";
-import { loadProducts, loadSupplier } from "@/server/supplier-data";
+import { loadProductPhotos, loadProducts, loadSupplier } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "New dispatch" };
 
@@ -17,11 +17,11 @@ export default async function NewSupplierDispatchPage({ params }: { params: Prom
   if (!UUID.test(id)) notFound();
   const supplier = await loadSupplier(id);
   if (!supplier) notFound();
-  const products = await loadProducts(id);
+  const [products, photos] = await Promise.all([loadProducts(id), loadProductPhotos(id)]);
   return (
     <>
       <PageTitle title={`${supplier.name}: new dispatch`} sub="The supplier prints the labels and scans the cartons" />
-      <DispatchForm supplierId={id} products={products} base={`/suppliers/${id}/dispatches`} tomorrow={addDays(todayIST(), 1)} />
+      <DispatchForm supplierId={id} products={products} base={`/suppliers/${id}/dispatches`} tomorrow={addDays(todayIST(), 1)} photos={photos} />
     </>
   );
 }

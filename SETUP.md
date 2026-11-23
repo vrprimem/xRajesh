@@ -33,6 +33,7 @@ tables without Row Level Security or drops things: the files switch RLS on thems
 11. `20261123110000_master_sku_search.sql`
 12. `20261123111000_supplier_supplies_money.sql`
 13. `20261123112000_supplier_production.sql`
+14. `20261123113000_product_photos.sql`
 
 Then tell the database where its functions live. Run this with your own project ref in place of `<project-ref>`:
 
@@ -124,6 +125,13 @@ the phone reads them.
 - Start a sync by hand: `select private.start_inventory_sync();`
 - Run the Produce now check by hand: `select private.supplier_produce_check();`
 - Function logs: Edge Functions > the function > Logs.
+
+## Product photos
+
+VRPRIME's owner or admin uploads a photo per master SKU on a supplier's Products page (one at a time, or many at once
+named after the master SKU or the product). The supplier's team then sees it next to the product on send plans, Produce
+now, dispatches and its product list. Photos are kept in the private `product-photos` bucket; only VRPRIME and a
+supplier with a product linked to that master SKU can open one. A factory reset keeps them.
 
 ## Supplies, production and money (in testing)
 

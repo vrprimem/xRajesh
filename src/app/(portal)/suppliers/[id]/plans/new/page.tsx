@@ -4,7 +4,7 @@ import { PlanForm } from "@/components/supplier/plan-form";
 import { PageTitle } from "@/components/ui";
 import { canManage, requireUser } from "@/lib/auth";
 import { addDays, todayIST } from "@/lib/format";
-import { loadStock, loadSupplier } from "@/server/supplier-data";
+import { loadProductPhotos, loadStock, loadSupplier } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "New send plan" };
 
@@ -18,11 +18,11 @@ export default async function NewPlanPage({ params }: { params: Promise<{ id: st
   if (!UUID.test(id)) notFound();
   const supplier = await loadSupplier(id);
   if (!supplier) notFound();
-  const rows = await loadStock(id);
+  const [rows, photos] = await Promise.all([loadStock(id), loadProductPhotos(id)]);
   return (
     <>
       <PageTitle title={`${supplier.name}: new send plan`} sub="Tell the supplier what to make and send next" />
-      <PlanForm supplierId={id} supplierName={supplier.name} rows={rows} defaultDue={addDays(todayIST(), 3)} back={`/suppliers/${id}`} />
+      <PlanForm supplierId={id} supplierName={supplier.name} rows={rows} defaultDue={addDays(todayIST(), 3)} back={`/suppliers/${id}`} photos={photos} />
     </>
   );
 }

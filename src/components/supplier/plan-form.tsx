@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { WithPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Card, Chip, Field, buttonClass } from "@/components/ui";
 import { formatNumber, noun } from "@/lib/format";
@@ -20,7 +21,7 @@ function suggestedCartons(r: StockRow): number {
  * the minimum, and how many cartons to send. Pre-filled from what is running low. Units typed are rounded up to whole
  * cartons, so the plan is always in round cartons.
  */
-export function PlanForm({ supplierId, supplierName, rows, defaultDue, back }: { supplierId: string; supplierName: string; rows: StockRow[]; defaultDue: string; back: string }) {
+export function PlanForm({ supplierId, supplierName, rows, defaultDue, back, photos = {} }: { supplierId: string; supplierName: string; rows: StockRow[]; defaultDue: string; back: string; photos?: Record<string, string> }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -98,13 +99,15 @@ export function PlanForm({ supplierId, supplierName, rows, defaultDue, back }: {
               return (
                 <tr key={r.product_id}>
                   <th scope="row" className="text-left font-semibold">
-                    {r.name}
-                    <span className="ml-1 font-normal text-muted">{r.units_per_carton}/carton</span>
-                    {low ? (
-                      <span className="ml-2">
-                        <Chip tone="bad">Low</Chip>
-                      </span>
-                    ) : null}
+                    <WithPhoto src={photos[r.product_id]} name={r.name}>
+                      {r.name}
+                      <span className="ml-1 font-normal text-muted">{r.units_per_carton}/carton</span>
+                      {low ? (
+                        <span className="ml-2">
+                          <Chip tone="bad">Low</Chip>
+                        </span>
+                      ) : null}
+                    </WithPhoto>
                   </th>
                   <td className="num tabular-nums">{r.stock_units === null ? "-" : formatNumber(r.stock_units)}</td>
                   <td className="num tabular-nums">{formatNumber(r.in_transit_units)}</td>

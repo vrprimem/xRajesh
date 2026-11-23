@@ -9,7 +9,7 @@ import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
 import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { CARTON_TYPE_LABEL, dispatchCounts } from "@/lib/supplier";
-import { loadDispatches, loadPlans, loadProduce, loadStock } from "@/server/supplier-data";
+import { loadDispatches, loadPlans, loadProduce, loadProductPhotos, loadStock } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "Supplier portal" };
 
@@ -20,8 +20,13 @@ export const metadata: Metadata = { title: "Supplier portal" };
 export default async function SupplierHome() {
   const user = await requirePortalUser();
   const owner = user.role === "supplier_owner";
-  const [plans, produce, dispatches, stock] = await Promise.all([
-    loadPlans(user.supplierId, true),owner ? loadProduce(user.supplierId) : [], loadDispatches(user.supplierId), owner ? loadStock(user.supplierId) : []]);
+  const [plans, produce, dispatches, stock, photos] = await Promise.all([
+    loadPlans(user.supplierId, true),
+    owner ? loadProduce(user.supplierId) : [],
+    loadDispatches(user.supplierId),
+    owner ? loadStock(user.supplierId) : [],
+    loadProductPhotos(user.supplierId),
+  ]);
   const today = todayIST();
   const open = dispatches.filter((d) => d.status === "planned" || d.status === "loading").sort((a, b) => a.due_on.localeCompare(b.due_on));
   const next = open[0] ?? null;
@@ -34,13 +39,13 @@ export default async function SupplierHome() {
 
       <Card className="g-pad">
         <SectionHead title="What VRPRIME wants next" sub={owner ? "Make these, tell VRPRIME how far you are, and make the dispatch when ready." : "What VRPRIME has asked for next."} />
-        {plans.length ? <PlanList plans={plans} who={owner ? "owner" : "scanner"} dispatchBase="/supplier/dispatches" /> : <p className="t-caption">No send plan from VRPRIME right now. You are told here, and by a notification, as soon as there is one.</p>}
+        {plans.length ? <PlanList plans={plans} who={owner ? "owner" : "scanner"} dispatchBase="/supplier/dispatches" photos={photos} /> : <p className="t-caption">No send plan from VRPRIME right now. You are told here, and by a notification, as soon as there is one.</p>}
       </Card>
 
       {owner ? (
         <Card className="g-pad">
           <SectionHead title="Produce now" sub="Products under their minimum at VRPRIME, counting what is already on the way." />
-          {produce.length ? <ProduceList rows={produce} canAnswer /> : <p className="t-caption">Nothing is below its minimum. You are told here, and by a notification, as soon as something is.</p>}
+          {produce.length ? <ProduceList rows={produce} canAnswer photos={photos} /> : <p className="t-caption">Nothing is below its minimum. You are told here, and by a notification, as soon as something is.</p>}
         </Card>
       ) : null}
 

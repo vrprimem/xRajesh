@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { WithPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Chip, buttonClass } from "@/components/ui";
 import { formatDateTime, formatNumber, noun } from "@/lib/format";
@@ -19,7 +20,7 @@ const ANSWERS: { status: Exclude<ProduceStatus, "open" | "cleared">; label: stri
  * "Produce now": the products that are under their minimum at VRPRIME, with the quantity to make. The supplier owner
  * answers each one (canAnswer); VRPRIME and the warehouse person only read the answers.
  */
-export function ProduceList({ rows, canAnswer }: { rows: ProduceRow[]; canAnswer: boolean }) {
+export function ProduceList({ rows, canAnswer, photos = {} }: { rows: ProduceRow[]; canAnswer: boolean; photos?: Record<string, string> }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -33,7 +34,9 @@ export function ProduceList({ rows, canAnswer }: { rows: ProduceRow[]; canAnswer
       {rows.map((r) => (
         <li key={r.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
-            <p className="min-w-0 text-[16px] font-semibold">{r.product}</p>
+            <div className="min-w-0 text-[16px] font-semibold">
+              <WithPhoto src={photos[r.product_id]} name={r.product} />
+            </div>
             <Chip tone={r.status === "open" ? "bad" : r.status === "dispatched" ? "ok" : "info"}>{PRODUCE_STATUS_LABEL[r.status]}</Chip>
           </div>
           <p className="text-[15px]">

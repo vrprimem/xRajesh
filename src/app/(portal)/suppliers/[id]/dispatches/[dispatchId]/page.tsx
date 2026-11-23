@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
 import { PageTitle, buttonClass } from "@/components/ui";
 import { canManage, requireUser } from "@/lib/auth";
-import { loadDispatch, loadSupplier } from "@/server/supplier-data";
+import { loadDispatch, loadProductPhotos, loadSupplier } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "Dispatch" };
 
@@ -16,7 +16,7 @@ export default async function SupplierDispatchPage({ params }: { params: Promise
   if (!canManage(user)) notFound();
   const { id, dispatchId } = await params;
   if (!UUID.test(id) || !UUID.test(dispatchId)) notFound();
-  const [supplier, detail] = await Promise.all([loadSupplier(id), loadDispatch(dispatchId)]);
+  const [supplier, detail, photos] = await Promise.all([loadSupplier(id), loadDispatch(dispatchId), loadProductPhotos(id)]);
   if (!supplier || !detail || detail.dispatch.supplier_id !== id) notFound();
   return (
     <>
@@ -28,7 +28,7 @@ export default async function SupplierDispatchPage({ params }: { params: Promise
           </Link>
         }
       />
-      <DispatchPanel detail={detail} who="vrprime" base={`/suppliers/${id}/dispatches`} />
+      <DispatchPanel detail={detail} who="vrprime" base={`/suppliers/${id}/dispatches`} photos={photos} />
     </>
   );
 }

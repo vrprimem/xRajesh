@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
+import { WithPhoto } from "@/components/supplier/product-photo";
+import { BulkPhotoUpload, PhotoButtons } from "@/components/supplier/photo-upload";
 import { useToast } from "@/components/toast";
 import { Card, Chip, EmptyState, Field, buttonClass } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
@@ -19,7 +21,7 @@ const EMPTY: Form = { name: "", master: null, category: "other", units: "", cart
  * `canEdit` is the supplier owner and VRPRIME's owner and admin; the warehouse person only reads. The master SKU is
  * picked by searching its name (`demoMasters` is only for the dev preview, which has no database).
  */
-export function ProductsPanel({ supplierId, products, canEdit, demoMasters }: { supplierId: string; products: ProductRow[]; canEdit: boolean; demoMasters?: { code: string; name: string }[] }) {
+export function ProductsPanel({ supplierId, products, canEdit, demoMasters, photos = {}, canPhoto = false }: { supplierId: string; products: ProductRow[]; canEdit: boolean; demoMasters?: { code: string; name: string }[]; photos?: Record<string, string>; canPhoto?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -185,6 +187,13 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters }: { 
         </Card>
       ) : null}
 
+      {canPhoto && products.some((p) => p.master_code) ? (
+        <BulkPhotoUpload
+          targets={[...new Set(products.filter((p) => p.master_code).map((p) => p.master_code!))].map((code) => ({ code, names: products.filter((p) => p.master_code === code).map((p) => p.name) }))}
+          missing={products.filter((p) => p.active && p.master_code && !photos[p.id]).length}
+        />
+      ) : null}
+
       {products.length === 0 ? (
         <EmptyState title="No products yet" body={canEdit ? "Add the first product, or import the whole sheet at once." : "The owner has not added any products yet."} />
       ) : (
@@ -199,6 +208,7 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters }: { 
                 <th scope="col">Carton</th>
                 <th scope="col" className="num">Weight</th>
                 <th scope="col" className="num">Capacity / day</th>
+                {canPhoto ? <th scope="col">Photo</th> : null}
                 {canEdit ? (
                   <th scope="col">
                     <span className="sr-only">Actions</span>
@@ -210,8 +220,10 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters }: { 
               {shown.map((p) => (
                 <tr key={p.id} className={p.active ? "" : "opacity-60"}>
                   <th scope="row" className="text-left font-semibold">
-                    {p.name}
-                    {p.active ? null : <span className="ml-2 font-normal text-muted">inactive</span>}
+                    <WithPhoto src={canPhoto ? null : photos[p.id]} name={p.name} size={48}>
+                      {p.name}
+                      {p.active ? null : <span className="ml-2 font-normal text-muted">inactive</span>}
+                    </WithPhoto>
                   </th>
                   <td>{p.master_code ?? <Chip tone="warn">Not linked</Chip>}</td>
                   <td>{CATEGORY_LABEL[p.category]}</td>
@@ -219,6 +231,11 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters }: { 
                   <td>{CARTON_TYPE_LABEL[p.carton_type]}</td>
                   <td className="num tabular-nums">{p.weight_per_carton === null ? "-" : `${p.weight_per_carton} kg`}</td>
                   <td className="num tabular-nums">{p.daily_capacity === null ? "-" : formatNumber(p.daily_capacity)}</td>
+                  {canPhoto ? (
+                    <td>
+                      <PhotoButtons code={p.master_code} name={p.name} src={photos[p.id]} />
+                    </td>
+                  ) : null}
                   {canEdit ? (
                     <td className="text-right">
                       <button type="button" onClick={() => edit(p)} className={buttonClass("row")}>
@@ -230,7 +247,7 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters }: { 
               ))}
               {shown.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 8 : 7} className="text-muted">
+                  <td colSpan={7 + (canEdit ? 1 : 0) + (canPhoto ? 1 : 0)} className="text-muted">
                     No product matches.
                   </td>
                 </tr>

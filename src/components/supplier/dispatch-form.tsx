@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { ProductPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Card, Field, buttonClass } from "@/components/ui";
 import { formatNumber, noun } from "@/lib/format";
@@ -15,7 +16,7 @@ type Line = { key: number; product_id: string; carton_type: CartonType; cartons:
  * A new dispatch plan: the date, and products with carton type and number of cartons. Saving it issues exactly one
  * label per carton. `base` is where dispatches live for this person (/supplier/dispatches, or VRPRIME's own page).
  */
-export function DispatchForm({ supplierId, products, base, tomorrow }: { supplierId: string; products: ProductRow[]; base: string; tomorrow: string }) {
+export function DispatchForm({ supplierId, products, base, tomorrow, photos = {} }: { supplierId: string; products: ProductRow[]; base: string; tomorrow: string; photos?: Record<string, string> }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -90,8 +91,10 @@ export function DispatchForm({ supplierId, products, base, tomorrow }: { supplie
               <div key={l.key} className="grid grid-cols-[1fr_auto] items-end gap-2 rounded-[12px] border border-line-soft p-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
                 <label className="col-span-2 flex flex-col gap-1 text-[14px] text-muted sm:col-span-1">
                   Product
+                  <span className="flex items-center gap-2">
+                  <ProductPhoto src={photos[l.product_id]} name={p?.name ?? "the product"} size={48} />
                   <select
-                    className="input"
+                    className="input min-w-0 flex-1"
                     aria-label={`Product, line ${i + 1}`}
                     value={l.product_id}
                     onChange={(e) => set(l.key, { product_id: e.target.value, carton_type: byId.get(e.target.value)?.carton_type ?? l.carton_type })}
@@ -102,6 +105,7 @@ export function DispatchForm({ supplierId, products, base, tomorrow }: { supplie
                       </option>
                     ))}
                   </select>
+                  </span>
                 </label>
                 <label className="flex flex-col gap-1 text-[14px] text-muted">
                   Carton type

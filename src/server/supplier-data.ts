@@ -1,4 +1,5 @@
 import "server-only";
+import { PHOTO_FILE, photoSrc } from "@/lib/photos";
 import { logError } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/server";
 import type { CartonType, DispatchStatus, ProduceStatus, ProductCategory } from "@/lib/supplier";
@@ -276,4 +277,15 @@ export async function loadDispatch(id: string): Promise<DispatchDetail | null> {
     cartons: soft("cartons", cartons.error, cartons.data as Omit<CartonRow, "product">[] | null, []).map((c) => ({ ...c, product: name(c.product_id) })),
     photoUrl,
   };
+}
+
+/**
+ * The photos of a supplier's products (each by its VRPRIME master SKU): product id -> the picture's address. Products
+ * without a photo are left out. Empty before the photos migration is applied.
+ */
+export async function loadProductPhotos(supplierId: string): Promise<Record<string, string>> {
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_product_photos", { p_supplier: supplierId });
+  const rows = soft("product photos", error, data as { product_id: string; path: string }[] | null, []);
+  return Object.fromEntries(rows.filter((r) => PHOTO_FILE.test(r.path)).map((r) => [r.product_id, photoSrc(r.path)]));
 }

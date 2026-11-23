@@ -35,6 +35,11 @@ const PRODUCTS: ProductRow[] = [
   { id: pid(4), name: "Scratch Remover Bottle 150ml", master_id: pid(54), master_code: "150-SCRATCH", category: "other_cleaning", units_per_carton: 110, carton_type: "H", daily_capacity: 2000, active: false, weight_per_carton: 8.5 },
 ];
 
+// Sample product photos (drawn here, not real pictures).
+const bottle = (fill: string, label: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#fff"/><rect x="41" y="6" width="18" height="14" rx="3" fill="#111"/><path d="M35 20h30v10l7 9v52a5 5 0 0 1-5 5H33a5 5 0 0 1-5-5V39l7-9z" fill="${fill}"/><rect x="32" y="52" width="36" height="22" rx="2" fill="#fff"/><text x="50" y="67" font-size="12" font-family="Arial" font-weight="700" text-anchor="middle" fill="#111">${label}</text></svg>`)}`;
+const PHOTOS: Record<string, string> = { [pid(1)]: bottle("#ffd60a", "KC"), [pid(2)]: bottle("#16a34a", "RR") };
+
 // A sample of the inventory software's products, for trying the master SKU search without a database.
 const MASTERS = [
   { code: "150-KITCHEN", name: "Kitchen Cleaner Spray 500ml" },
@@ -144,11 +149,11 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
           <PageTitle title="Today" sub="2 things need your answer" />
           <Card className="g-pad">
             <SectionHead title="What VRPRIME wants next" sub="Make these, tell VRPRIME how far you are, and make the dispatch when ready." />
-            <PlanList plans={PLANS} who="owner" dispatchBase="/dev/supplier" />
+            <PlanList plans={PLANS} who="owner" dispatchBase="/dev/supplier" photos={PHOTOS} />
           </Card>
           <Card className="g-pad">
             <SectionHead title="Produce now" sub="Products under their minimum at VRPRIME, counting what is already on the way." />
-            <ProduceList rows={PRODUCE} canAnswer />
+            <ProduceList rows={PRODUCE} canAnswer photos={PHOTOS} />
           </Card>
           <MonthCartons dispatches={DISPATCHES} />
           <DispatchList dispatches={DISPATCHES} base="/dev/supplier" emptyBody="" />
@@ -159,7 +164,7 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       {view === "dispatch" ? (
         <>
           <PageTitle title="Dispatch 7" />
-          <DispatchPanel detail={DETAIL} who={who} base="/dev/supplier" />
+          <DispatchPanel detail={DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} />
         </>
       ) : null}
 
@@ -181,14 +186,14 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       {view === "products" ? (
         <>
           <PageTitle title="Products" sub="3 active" />
-          <ProductsPanel supplierId={SUPPLIER} products={PRODUCTS} canEdit={who === "owner"} demoMasters={MASTERS} />
+          <ProductsPanel supplierId={SUPPLIER} products={PRODUCTS} canEdit={who === "owner" || sp.who === "vrprime"} demoMasters={MASTERS} photos={PHOTOS} canPhoto={sp.who === "vrprime"} />
         </>
       ) : null}
 
       {view === "plan" ? (
         <>
           <PageTitle title="Rajesh Industries: new send plan" sub="Tell the supplier what to make and send next" />
-          <PlanForm supplierId={SUPPLIER} supplierName="Rajesh Industries" rows={STOCK} defaultDue="2026-11-26" back="/dev/supplier" />
+          <PlanForm supplierId={SUPPLIER} supplierName="Rajesh Industries" rows={STOCK} defaultDue="2026-11-26" back="/dev/supplier" photos={PHOTOS} />
         </>
       ) : null}
 
