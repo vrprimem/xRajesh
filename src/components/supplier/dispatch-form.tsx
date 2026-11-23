@@ -6,12 +6,12 @@ import { ProductPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Card, Field, buttonClass } from "@/components/ui";
 import { formatNumber, noun } from "@/lib/format";
-import { CARTON_TYPE_LABEL, cartonWeightFor, type CartonType } from "@/lib/supplier";
+import { cartonWeightFor } from "@/lib/supplier";
 import { createDispatch } from "@/server/actions/supplier";
 import type { ProductRow } from "@/server/supplier-data";
 
 /** One line of the form. `weightSet`: the weight was typed in, so it no longer follows the pieces. */
-type Line = { key: number; product_id: string; carton_type: CartonType; cartons: string; units: string; weight: string; weightSet: boolean };
+type Line = { key: number; product_id: string; cartons: string; units: string; weight: string; weightSet: boolean };
 
 const whole = (v: string) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN);
 const kg = (v: string) => {
@@ -21,7 +21,6 @@ const kg = (v: string) => {
 const fresh = (p: ProductRow, key: number): Line => ({
   key,
   product_id: p.id,
-  carton_type: p.carton_type,
   cartons: "",
   units: String(p.units_per_carton),
   weight: p.weight_per_carton ? String(p.weight_per_carton) : "",
@@ -29,7 +28,7 @@ const fresh = (p: ProductRow, key: number): Line => ({
 });
 
 /**
- * A new dispatch plan: the date, and products with carton type, number of cartons, pieces per carton and carton weight
+ * A new dispatch plan: the date, and products with the number of cartons, pieces per carton and carton weight
  * (the product's, unless the boxes hold a different count or weigh differently this time: the weight follows the
  * pieces until one is typed in). Saving it issues exactly one label per carton, printed with its pieces and weight.
  * `base` is where dispatches live for this person (/supplier/dispatches, or VRPRIME's own page).
@@ -58,7 +57,7 @@ export function DispatchForm({ supplierId, products, base, tomorrow, photos = {}
     (t, l) => {
       const n = Number(l.cartons);
       if (Number.isInteger(n) && n > 0) {
-        t[l.carton_type] += n;
+        t.cartons += n;
         t.units += n * (whole(l.units) || 0);
         const w = kg(l.weight);
         if (w > 0) t.kg += n * w;
@@ -66,13 +65,12 @@ export function DispatchForm({ supplierId, products, base, tomorrow, photos = {}
       }
       return t;
     },
-    { H: 0, T: 0, units: 0, kg: 0, unweighed: 0 },
+    { cartons: 0, units: 0, kg: 0, unweighed: 0 },
   );
 
   const submit = () => {
     const clean = lines.map((l) => ({
       product_id: l.product_id,
-      carton_type: l.carton_type,
       cartons: Number(l.cartons),
       units_per_carton: whole(l.units),
       weight_per_carton: l.weight.trim() ? kg(l.weight) : undefined,
@@ -83,10 +81,9 @@ export function DispatchForm({ supplierId, products, base, tomorrow, photos = {}
     if (clean.some((l) => l.weight_per_carton !== undefined && !(l.weight_per_carton > 0 && l.weight_per_carton <= 1000))) return setProblem("A carton weight is in kg, above 0, for example 8.5. Or leave it empty.");
     const seen = new Map<string, string>();
     for (const l of clean) {
-      const key = `${l.product_id}:${l.carton_type}`;
       const what = `${l.units_per_carton}:${l.weight_per_carton ?? ""}`;
-      if (seen.has(key) && seen.get(key) !== what) return setProblem("A product is on two lines with the same carton type but other pieces or weight. Keep one line; change single cartons on the dispatch page once the labels are made.");
-      seen.set(key, what);
+      if (seen.has(l.product_id) && seen.get(l.product_id) !== what) return setProblem("A product is on two lines with other pieces or weight. Keep one line; change single cartons on the dispatch page once the labels are made.");
+      seen.set(l.product_id, what);
     }
     setProblem("");
     startTransition(async () => {
@@ -132,7 +129,7 @@ export function DispatchForm({ supplierId, products, base, tomorrow, photos = {}
             const pieces = whole(l.units);
             const w = kg(l.weight);
             return (
-              <div key={l.key} className="grid grid-cols-2 items-end gap-2 rounded-[12px] border border-line-soft p-3 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]">
+              <div key={l.key} className="grid grid-cols-2 items-end gap-2 rounded-[12px] border border-line-soft p-3 sm:grid-cols-[2fr_1fr_1fr_1fr_auto]">
                 <label className="col-span-2 flex flex-col gap-1 text-[14px] text-muted sm:col-span-1">
                   Product
                   <span className="flex items-center gap-2">
@@ -155,13 +152,6 @@ export function DispatchForm({ supplierId, products, base, tomorrow, photos = {}
                   </span>
                 </label>
                 <label className="flex flex-col gap-1 text-[14px] text-muted">
-                  Carton type
-                  <select className="input" aria-label={`Carton type, line ${i + 1}`} value={l.carton_type} onChange={(e) => set(l.key, { carton_type: e.target.value as CartonType })}>
-                    <option value="H">Hard</option>
-                    <option value="T">2-ply</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-[14px] text-muted">
                   Cartons
                   <input className="input" inputMode="numeric" aria-label={`Cartons, line ${i + 1}`} value={l.cartons} onChange={(e) => set(l.key, { cartons: e.target.value.replace(/\D/g, "") })} />
                 </label>
@@ -180,7 +170,7 @@ export function DispatchForm({ supplierId, products, base, tomorrow, photos = {}
                     onChange={(e) => set(l.key, { weight: e.target.value.replace(/[^\d.,]/g, ""), weightSet: true })}
                   />
                 </label>
-                <button type="button" aria-label={`Remove line ${i + 1}`} disabled={lines.length === 1} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} className={buttonClass("ghost", "col-span-2 justify-self-end sm:col-span-1")}>
+                <button type="button" aria-label={`Remove line ${i + 1}`} disabled={lines.length === 1} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} className={buttonClass("ghost", "justify-self-end")}>
                   Remove
                 </button>
                 {p && Number.isInteger(n) && n > 0 && pieces > 0 ? (
@@ -210,7 +200,7 @@ export function DispatchForm({ supplierId, products, base, tomorrow, photos = {}
         </div>
 
         <p className="text-[15px]">
-          Total: <span className="font-semibold tabular-nums">{formatNumber(totals.H + totals.T)}</span> {noun(totals.H + totals.T, "carton")} ({formatNumber(totals.H)} {CARTON_TYPE_LABEL.H}, {formatNumber(totals.T)} {CARTON_TYPE_LABEL.T}) ·{" "}
+          Total: <span className="font-semibold tabular-nums">{formatNumber(totals.cartons)}</span> {noun(totals.cartons, "carton")} ·{" "}
           <span className="tabular-nums">{formatNumber(totals.units)}</span> {noun(totals.units, "unit")}
           {totals.kg > 0 ? (
             <>

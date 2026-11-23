@@ -52,7 +52,7 @@ test("arrival: cartons scanned in of those loaded, days on the road, late after 
   assert.equal(arrivalOf(dispatch(), "2026-11-20"), null, "not sent yet");
 });
 
-test("a dispatch's products: both carton types together, most cartons first", () => {
+test("a dispatch's products: a product on two lines counted once, most cartons first", () => {
   assert.deepEqual(
     productCartons([
       { product_id: "rr", product: "Rat Repellent", carton_type: "T", cartons: 5 },
@@ -66,16 +66,17 @@ test("a dispatch's products: both carton types together, most cartons first", ()
   );
 });
 
-test("labels by product and carton type: counts, and still-to-scan first", () => {
-  const label = (no: number, status: "issued" | "loaded" | "void", over = {}) => ({ product_id: "kc", product: "Kitchen Cleaner", carton_type: "H" as const, status, carton_no: no, inbound_status: null, ...over });
+test("labels by product: counts, and still-to-scan first", () => {
+  const label = (no: number, status: "issued" | "loaded" | "void", over = {}) => ({ product_id: "kc", product: "Kitchen Cleaner", status, carton_no: no, inbound_status: null, ...over });
   const groups = labelGroups(
     [
-      { product_id: "kc", product: "Kitchen Cleaner", carton_type: "H", cartons: 3 },
-      { product_id: "rr", product: "Rat Repellent", carton_type: "T", cartons: 2 },
+      { product_id: "kc", product: "Kitchen Cleaner", cartons: 2 },
+      { product_id: "rr", product: "Rat Repellent", cartons: 2 },
+      { product_id: "kc", product: "Kitchen Cleaner", cartons: 1 }, // an older dispatch: the same product on two lines
     ],
     [label(1, "loaded", { inbound_status: "received" }), label(2, "void"), label(3, "issued"), label(4, "loaded")],
   );
-  assert.equal(groups.length, 2);
+  assert.equal(groups.length, 2, "one group per product");
   const kc = groups[0];
   assert.deepEqual([kc.planned, kc.loaded, kc.toScan, kc.voided, kc.arrived], [3, 2, 1, 1, 1]);
   assert.deepEqual(

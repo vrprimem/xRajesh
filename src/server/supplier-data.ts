@@ -26,7 +26,6 @@ export type ProductRow = {
   master_code: string | null;
   category: ProductCategory;
   units_per_carton: number;
-  carton_type: CartonType;
   daily_capacity: number | null;
   active: boolean;
   weight_per_carton: number | null;
@@ -115,7 +114,7 @@ export async function loadSyncState(): Promise<SyncState | null> {
   return (data as SyncState | null) ?? null;
 }
 
-export type ReportData = { dispatches: { id: string; number: number; status: string; closed_at: string }[]; cartons: { dispatch_id: string; product_id: string; carton_type: "H" | "T"; units: number; inbound_status: string | null }[]; names: Map<string, string> };
+export type ReportData = { dispatches: { id: string; number: number; status: string; closed_at: string }[]; cartons: { dispatch_id: string; product_id: string; units: number; inbound_status: string | null }[]; names: Map<string, string> };
 
 /** Dispatches closed in a month (India time) with their loaded cartons, for the carton report. */
 export async function loadReport(supplierId: string, from: string, to: string): Promise<ReportData> {
@@ -132,7 +131,7 @@ export async function loadReport(supplierId: string, from: string, to: string): 
   const dispatches = soft("report dispatches", error, data as ReportData["dispatches"] | null, []);
   const [cartons, products] = await Promise.all([
     dispatches.length
-      ? db.from("supplier_cartons").select("dispatch_id, product_id, carton_type, units, inbound_status").in("dispatch_id", dispatches.map((d) => d.id)).eq("status", "loaded").limit(100000)
+      ? db.from("supplier_cartons").select("dispatch_id, product_id, units, inbound_status").in("dispatch_id", dispatches.map((d) => d.id)).eq("status", "loaded").limit(100000)
       : Promise.resolve({ data: [], error: null }),
     db.from("supplier_products").select("id, name").eq("supplier_id", supplierId).limit(5000),
   ]);
@@ -189,7 +188,7 @@ export async function loadSupplier(id: string): Promise<Supplier | null> {
 export async function loadProducts(supplierId: string): Promise<ProductRow[]> {
   const db = await supplierDb();
   const [products, stock] = await Promise.all([
-    db.from("supplier_products").select("id, name, master_id, category, units_per_carton, carton_type, daily_capacity, active, weight_per_carton").eq("supplier_id", supplierId).order("name").limit(5000),
+    db.from("supplier_products").select("id, name, master_id, category, units_per_carton, daily_capacity, active, weight_per_carton").eq("supplier_id", supplierId).order("name").limit(5000),
     db.rpc("supplier_stock", { p_supplier: supplierId }),
   ]);
   const codes = new Map<string, string | null>(((stock.data ?? []) as StockRow[]).map((s) => [s.product_id, s.master_code]));

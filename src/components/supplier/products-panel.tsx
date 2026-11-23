@@ -8,13 +8,13 @@ import { useToast } from "@/components/toast";
 import { Card, Chip, EmptyState, Field, buttonClass } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 import type { MasterSku } from "@/lib/master-search";
-import { CARTON_TYPE_LABEL, CATEGORY_LABEL, PRODUCT_CATEGORIES, parseProductsTable, parseWeight, type CartonType, type ProductCategory, type ProductInput } from "@/lib/supplier";
+import { CATEGORY_LABEL, PRODUCT_CATEGORIES, parseProductsTable, parseWeight, type ProductCategory, type ProductInput } from "@/lib/supplier";
 import { saveProducts } from "@/server/actions/supplier";
 import type { ProductRow } from "@/server/supplier-data";
 import { MasterSkuPicker } from "./master-sku-picker";
 
-type Form = { name: string; master: MasterSku | null; category: ProductCategory; units: string; carton_type: CartonType; capacity: string; weight: string; active: boolean; editing: boolean };
-const EMPTY: Form = { name: "", master: null, category: "other", units: "", carton_type: "H", capacity: "", weight: "", active: true, editing: false };
+type Form = { name: string; master: MasterSku | null; category: ProductCategory; units: string; capacity: string; weight: string; active: boolean; editing: boolean };
+const EMPTY: Form = { name: "", master: null, category: "other", units: "", capacity: "", weight: "", active: true, editing: false };
 
 /**
  * The supplier's products: search, filter by category, add or edit one, and import the whole sheet (.xlsx or .csv).
@@ -55,7 +55,7 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
     const weight = parseWeight(form.weight);
     if (weight === "bad") return setProblems(["Carton weight must be a number of kg above 0, for example 8.5."]);
     setProblems([]);
-    save([{ name: form.name.trim(), master_code: form.master?.code ?? null, category: form.category, units_per_carton: units, carton_type: form.carton_type, daily_capacity: capacity, active: form.active, weight_per_carton: weight }], () => setForm(null));
+    save([{ name: form.name.trim(), master_code: form.master?.code ?? null, category: form.category, units_per_carton: units, daily_capacity: capacity, active: form.active, weight_per_carton: weight }], () => setForm(null));
   };
 
   const importFile = async (file: File) => {
@@ -74,7 +74,7 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
 
   const edit = (p: ProductRow) => {
     setProblems([]);
-    setForm({ name: p.name, master: p.master_code ? { code: p.master_code, name: null } : null, category: p.category, units: String(p.units_per_carton), carton_type: p.carton_type, capacity: p.daily_capacity === null ? "" : String(p.daily_capacity), weight: p.weight_per_carton === null ? "" : String(p.weight_per_carton), active: p.active, editing: true });
+    setForm({ name: p.name, master: p.master_code ? { code: p.master_code, name: null } : null, category: p.category, units: String(p.units_per_carton), capacity: p.daily_capacity === null ? "" : String(p.daily_capacity), weight: p.weight_per_carton === null ? "" : String(p.weight_per_carton), active: p.active, editing: true });
   };
 
   return (
@@ -104,7 +104,7 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
 
       {canEdit ? (
         <p className="t-caption">
-          Import sheet: an .xlsx or .csv whose first row has the headings Name and Units per carton, and optionally Master SKU, Category, Carton type (Hard or 2-ply), Carton weight (kg) and Daily capacity. Products are matched by name: new names are added, existing ones updated, nothing is removed.
+          Import sheet: an .xlsx or .csv whose first row has the headings Name and Units per carton, and optionally Master SKU, Category, Carton weight (kg) and Daily capacity. Products are matched by name: new names are added, existing ones updated, nothing is removed.
         </p>
       ) : null}
 
@@ -158,12 +158,6 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
               <Field label="Units per carton" htmlFor="sp-units" required>
                 <input id="sp-units" className="input" inputMode="numeric" value={form.units} onChange={(e) => setForm({ ...form, units: e.target.value })} />
               </Field>
-              <Field label="Usual carton type" htmlFor="sp-carton" required>
-                <select id="sp-carton" className="input" value={form.carton_type} onChange={(e) => setForm({ ...form, carton_type: e.target.value as CartonType })}>
-                  <option value="H">Hard</option>
-                  <option value="T">2-ply</option>
-                </select>
-              </Field>
               <Field label="Carton weight (kg)" htmlFor="sp-weight" hint="A full carton, for example 8.5. Printed on the label and sent to the VRPRIME inventory software with it.">
                 <input id="sp-weight" className="input" inputMode="decimal" placeholder="e.g. 8.5" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} />
               </Field>
@@ -205,7 +199,6 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
                 <th scope="col">Master SKU</th>
                 <th scope="col">Category</th>
                 <th scope="col" className="num">Units / carton</th>
-                <th scope="col">Carton</th>
                 <th scope="col" className="num">Weight</th>
                 <th scope="col" className="num">Capacity / day</th>
                 {canPhoto ? <th scope="col">Photo</th> : null}
@@ -228,7 +221,6 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
                   <td>{p.master_code ?? <Chip tone="warn">Not linked</Chip>}</td>
                   <td>{CATEGORY_LABEL[p.category]}</td>
                   <td className="num tabular-nums">{formatNumber(p.units_per_carton)}</td>
-                  <td>{CARTON_TYPE_LABEL[p.carton_type]}</td>
                   <td className="num tabular-nums">{p.weight_per_carton === null ? "-" : `${p.weight_per_carton} kg`}</td>
                   <td className="num tabular-nums">{p.daily_capacity === null ? "-" : formatNumber(p.daily_capacity)}</td>
                   {canPhoto ? (

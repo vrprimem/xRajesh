@@ -25,7 +25,7 @@ export async function labelsDownload(detail: DispatchDetail, supplierName: strin
   const format: LabelFormat = search.get("format") === "a4" ? "a4" : "single";
   const title = `${supplierName} dispatch ${dispatch.number} labels`;
   const bytes = await labelsPdf(
-    chosen.map((c) => ({ carton_type: c.carton_type, product: c.product, units: c.units, carton_no: c.carton_no, barcode: c.barcode, weight_per_carton: c.weight_per_carton })),
+    chosen.map((c) => ({ product: c.product, units: c.units, carton_no: c.carton_no, barcode: c.barcode, weight_per_carton: c.weight_per_carton })),
     { dispatchNo: dispatch.number, due: formatDate(dispatch.due_on), title },
     format,
   );

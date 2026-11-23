@@ -4,17 +4,16 @@ import { PDFDocument } from "pdf-lib";
 import { A4_H, A4_W, barRuns, labelsPdf, PAGE_H, PAGE_W, pdfText, PER_SHEET, SHEET, sheetSlot } from "./label-pdf.ts";
 import { code128Widths } from "./supplier.ts";
 
-const label = (n: number, type: "H" | "T" = "H") => ({
-  carton_type: type,
+const label = (n: number, weight: number | null = 8.5) => ({
   product: "Scratch 150ml",
   units: 110,
   carton_no: n,
   barcode: `101000107110${String(5860 + n).padStart(4, "0")}`,
-  weight_per_carton: type === "H" ? 8.5 : null,
+  weight_per_carton: weight,
 });
 
 test("one 100 x 75 mm page per label", async () => {
-  const bytes = await labelsPdf([label(1), label(2, "T"), label(3)], { dispatchNo: 1, due: "24 Nov", title: "Rajesh dispatch 1 labels" });
+  const bytes = await labelsPdf([label(1), label(2, null), label(3)], { dispatchNo: 1, due: "24 Nov", title: "Rajesh dispatch 1 labels" });
   const doc = await PDFDocument.load(bytes);
   assert.equal(doc.getPageCount(), 3);
   const { width, height } = doc.getPage(0).getSize();

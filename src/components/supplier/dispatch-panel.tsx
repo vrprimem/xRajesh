@@ -10,7 +10,7 @@ import { Card, Chip, SectionHead, buttonClass } from "@/components/ui";
 import { formatDate, formatDateTime, formatNumber, noun } from "@/lib/format";
 import { safeError } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/client";
-import { CARTON_TYPE_LABEL, DISPATCH_STATUS_LABEL, dispatchCounts, labelsOwed, pendingKey, readPending, type CartonType, type DispatchStatus } from "@/lib/supplier";
+import { DISPATCH_STATUS_LABEL, dispatchCounts, labelsOwed, pendingKey, readPending, type DispatchStatus } from "@/lib/supplier";
 import { cancelDispatch, closeDispatch, receiveDispatch, requestLabels, setDispatchPhoto, voidUnusedLabels } from "@/server/actions/supplier";
 import type { ActionResult } from "@/lib/types";
 import type { DispatchDetail } from "@/server/supplier-data";
@@ -19,17 +19,17 @@ import type { DispatchDetail } from "@/server/supplier-data";
 const STATUS_TONE: Record<DispatchStatus, "neutral" | "info" | "warn" | "ok" | "bad"> = { planned: "warn", loading: "warn", closed: "info", received: "ok", cancelled: "neutral" };
 export const DispatchStatusChip = ({ status }: { status: DispatchStatus }) => <Chip tone={STATUS_TONE[status]}>{DISPATCH_STATUS_LABEL[status]}</Chip>;
 
-/** Scanned against planned for one carton type, as a bar. */
-function TypeCounter({ type, planned, loaded, left }: { type: CartonType; planned: number; loaded: number; left: number }) {
+/** Cartons scanned against planned, as a bar. */
+function CartonCounter({ planned, loaded, left }: { planned: number; loaded: number; left: number }) {
   const pct = planned ? Math.min(100, Math.round((loaded / planned) * 100)) : 0;
   return (
     <div className="rounded-[10px] border-2 border-frame p-3">
-      <p className="text-[15px] font-semibold">{CARTON_TYPE_LABEL[type]} cartons</p>
+      <p className="text-[15px] font-semibold">Cartons scanned</p>
       <p className="t-score mt-1.5 text-[42px]">
         {formatNumber(loaded)}
         <span className="text-[20px]"> / {formatNumber(planned)}</span>
       </p>
-      <div className="mt-2.5 h-3 overflow-hidden rounded-[3px] bg-panel2" role="progressbar" aria-valuemin={0} aria-valuemax={planned} aria-valuenow={loaded} aria-label={`${CARTON_TYPE_LABEL[type]} cartons scanned`}>
+      <div className="mt-2.5 h-3 overflow-hidden rounded-[3px] bg-panel2" role="progressbar" aria-valuemin={0} aria-valuemax={planned} aria-valuenow={loaded} aria-label="Cartons scanned">
         <div className={`h-full ${loaded >= planned && planned > 0 ? "bg-ok" : "vr-bar"}`} style={{ width: `${pct}%` }} />
       </div>
       <p className="t-caption mt-1.5 font-semibold">{left ? `${formatNumber(left)} ${left === 1 ? "label" : "labels"} not scanned` : planned ? "No label left to scan" : "None planned"}</p>
@@ -115,12 +115,11 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
           </p>
         </div>
         {d.note ? <p className="mt-2 text-[15px]">{d.note}</p> : null}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <TypeCounter type="H" {...counts.byType.H} />
-          <TypeCounter type="T" {...counts.byType.T} />
+        <div className="mt-3">
+          <CartonCounter planned={counts.planned} loaded={counts.loaded} left={counts.left} />
         </div>
         <p className="mt-3 text-[15px]">
-          <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} {noun(counts.planned, "carton")} scanned · <span className="tabular-nums">{formatNumber(counts.units)}</span> {noun(counts.units, "unit")} loaded
+          <span className="font-semibold tabular-nums">{formatNumber(counts.units)}</span> {noun(counts.units, "unit")} loaded
           {loadedKg ? ` · ${formatNumber(loadedKg)} kg` : ""}
           {counts.voided ? ` · ${formatNumber(counts.voided)} ${counts.voided === 1 ? "label" : "labels"} void` : ""}
           {!open && d.status !== "cancelled" && counts.loaded ? ` · ${formatNumber(arrived)} of ${formatNumber(counts.loaded)} scanned in at VRPRIME` : ""}
@@ -252,7 +251,6 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
           <thead>
             <tr>
               <th scope="col" className="min-w-[170px]">Product</th>
-              <th scope="col">Carton</th>
               <th scope="col" className="num">Units / carton</th>
               <th scope="col" className="num">Cartons</th>
               <th scope="col" className="num">Units</th>
@@ -264,7 +262,6 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
                 <th scope="row" className="text-left font-semibold">
                   <WithPhoto src={photos[l.product_id]} name={l.product} />
                 </th>
-                <td>{CARTON_TYPE_LABEL[l.carton_type]}</td>
                 <td className="num tabular-nums">{formatNumber(l.units_per_carton)}</td>
                 <td className="num tabular-nums">{formatNumber(l.cartons)}</td>
                 <td className="num tabular-nums">{formatNumber(l.cartons * l.units_per_carton)}</td>

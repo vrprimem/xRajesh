@@ -23,8 +23,8 @@ export default async function ScanPage({ params }: { params: Promise<{ id: strin
       dispatchId={id}
       number={detail.dispatch.number}
       backHref={back}
-      planned={{ H: counts.byType.H.planned, T: counts.byType.T.planned }}
-      cartons={detail.cartons.map((c) => ({ barcode: c.barcode, carton_no: c.carton_no, carton_type: c.carton_type, product: c.product, status: c.status }))}
+      planned={counts.planned}
+      cartons={detail.cartons.map((c) => ({ barcode: c.barcode, carton_no: c.carton_no, product: c.product, status: c.status }))}
     />
   );
 }

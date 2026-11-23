@@ -59,7 +59,6 @@ const productSchema = z.object({
   master_code: z.string().trim().max(200).nullable(),
   category: z.enum(PRODUCT_CATEGORIES),
   units_per_carton: z.number().int().min(1).max(100000),
-  carton_type: z.enum(["H", "T"]),
   daily_capacity: z.number().int().min(0).max(10000000).nullable(),
   active: z.boolean(),
   weight_per_carton: z.number().gt(0).max(1000).nullable(),
@@ -90,7 +89,7 @@ const dispatchSchema = z.object({
   due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
   note: z.string().trim().max(500).optional().default(""),
   lines: z
-    .array(z.object({ product_id: UUID, cartons: z.number().int().min(1, "At least 1 carton").max(5000), carton_type: z.enum(["H", "T"]).optional(), units_per_carton: z.number().int().min(1).max(100000).optional(), weight_per_carton: z.number().gt(0).max(1000).optional() }))
+    .array(z.object({ product_id: UUID, cartons: z.number().int().min(1, "At least 1 carton").max(5000), units_per_carton: z.number().int().min(1).max(100000).optional(), weight_per_carton: z.number().gt(0).max(1000).optional() }))
     .min(1, "Add at least one product")
     .max(200),
 });

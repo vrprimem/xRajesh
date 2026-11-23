@@ -72,7 +72,7 @@ test("the barcode picture has a quiet zone and one bar per odd width", () => {
   assert.match(svg, /<rect x="10" y="0" width="2"/, "the first bar starts after the quiet zone");
 });
 
-test("products sheet: headings found by name, defaults filled", () => {
+test("products sheet: headings found by name, defaults filled, an old carton type column left alone", () => {
   const { rows, errors } = parseProductsTable([
     ["Product Name", "VRPRIME Master SKU", "Category", "Pcs per carton", "Carton type", "Daily capacity", "Carton weight (kg)"],
     ["Kitchen Cleaner 500ml", "150-KC", "Kitchen cleaner", "24", "Hard", "1,200", "12.5"],
@@ -82,9 +82,9 @@ test("products sheet: headings found by name, defaults filled", () => {
   ]);
   assert.deepEqual(errors, []);
   assert.deepEqual(rows, [
-    { name: "Kitchen Cleaner 500ml", master_code: "150-KC", category: "kitchen_cleaner", units_per_carton: 24, carton_type: "H", daily_capacity: 1200, active: true, weight_per_carton: 12.5 },
-    { name: "Rat Repellent Spray", master_code: null, category: "repellent", units_per_carton: 48, carton_type: "T", daily_capacity: null, active: true, weight_per_carton: null },
-    { name: "Glass Cleaner", master_code: "151-GC", category: "other", units_per_carton: 12, carton_type: "H", daily_capacity: null, active: true, weight_per_carton: 6 },
+    { name: "Kitchen Cleaner 500ml", master_code: "150-KC", category: "kitchen_cleaner", units_per_carton: 24, daily_capacity: 1200, active: true, weight_per_carton: 12.5 },
+    { name: "Rat Repellent Spray", master_code: null, category: "repellent", units_per_carton: 48, daily_capacity: null, active: true, weight_per_carton: null },
+    { name: "Glass Cleaner", master_code: "151-GC", category: "other", units_per_carton: 12, daily_capacity: null, active: true, weight_per_carton: 6 },
   ]);
 });
 
@@ -97,10 +97,9 @@ test("products sheet: a problem names its row and nothing is imported", () => {
     ["C", "12", "Plastic"],
   ]);
   assert.equal(bad.rows.length, 0);
-  assert.equal(bad.errors.length, 3);
+  assert.equal(bad.errors.length, 2, "the carton type column is not read, so Plastic is no problem");
   assert.match(bad.errors[0], /Row 3 \(B\)/);
   assert.match(bad.errors[1], /Row 4: "a" is in the sheet twice/);
-  assert.match(bad.errors[2], /Row 5 \(C\).*Plastic/);
   assert.match(parseProductsTable([["Item code", "Qty"]]).errors.join(" "), /No "Name" column/);
   assert.match(parseProductsTable([["Name", "Units per carton"]]).errors.join(" "), /no products/);
 });
@@ -115,22 +114,18 @@ test("carton weight: kg above 0, to 2 places; empty is none", () => {
   assert.equal(parseWeight("1001"), "bad");
 });
 
-test("dispatch counts: planned from the plan, the rest from the labels, split by carton type", () => {
+test("dispatch counts: planned from the plan, the rest from the labels", () => {
   const counts = dispatchCounts(
+    [{ cartons: 3 }, { cartons: 2 }],
     [
-      { carton_type: "H", cartons: 3 },
-      { carton_type: "T", cartons: 2 },
-    ],
-    [
-      { carton_type: "H", status: "loaded", units: 24 },
-      { carton_type: "H", status: "void", units: 24 }, // damaged label
-      { carton_type: "H", status: "loaded", units: 24 }, // its reprint
-      { carton_type: "H", status: "issued", units: 24 },
-      { carton_type: "T", status: "loaded", units: 48 },
-      { carton_type: "T", status: "issued", units: 48 },
+      { status: "loaded", units: 24 },
+      { status: "void", units: 24 }, // damaged label
+      { status: "loaded", units: 24 }, // its reprint
+      { status: "issued", units: 24 },
+      { status: "loaded", units: 48 },
+      { status: "issued", units: 48 },
     ],
   );
-  assert.deepEqual(counts.byType, { H: { planned: 3, loaded: 2, left: 1 }, T: { planned: 2, loaded: 1, left: 1 } });
   assert.equal(counts.planned, 5);
   assert.equal(counts.loaded, 3);
   assert.equal(counts.left, 2);

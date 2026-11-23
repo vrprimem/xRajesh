@@ -1,16 +1,12 @@
 // The carton report: what was sent to VRPRIME in a month and what has arrived, by dispatch, by product and by day.
 // Plain functions, so `node --test` can run them.
 
-import type { CartonType } from "./supplier.ts";
-
 export type ReportDispatch = { id: string; number: number; status: string; closed_at: string };
-export type ReportCarton = { dispatch_id: string; product_id: string; carton_type: CartonType; units: number; inbound_status: string | null };
+export type ReportCarton = { dispatch_id: string; product_id: string; units: number; inbound_status: string | null };
 
-type Tally = { hard: number; twoPly: number; cartons: number; units: number; arrived: number };
-const empty = (): Tally => ({ hard: 0, twoPly: 0, cartons: 0, units: 0, arrived: 0 });
+type Tally = { cartons: number; units: number; arrived: number };
+const empty = (): Tally => ({ cartons: 0, units: 0, arrived: 0 });
 const add = (t: Tally, c: ReportCarton) => {
-  if (c.carton_type === "H") t.hard += 1;
-  else t.twoPly += 1;
   t.cartons += 1;
   t.units += c.units;
   if (c.inbound_status === "received") t.arrived += 1;

@@ -7,7 +7,7 @@ import { WithPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Chip, buttonClass } from "@/components/ui";
 import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
-import { CARTON_TYPE_LABEL, PLAN_STATUS_LABEL, type PlanStatus } from "@/lib/supplier";
+import { PLAN_STATUS_LABEL, type PlanStatus } from "@/lib/supplier";
 import { cancelPlan, planToDispatch, respondPlan } from "@/server/actions/supplier";
 import type { PlanRow } from "@/server/supplier-data";
 
@@ -58,7 +58,6 @@ export function PlanList({ plans, who, dispatchBase, photos = {} }: { plans: Pla
                     <th scope="row" className="py-1.5 pr-2 text-left font-semibold">
                       <WithPhoto src={photos[l.product_id]} name={l.product}>
                         {l.product}
-                        <span className="ml-1 font-normal text-muted">{CARTON_TYPE_LABEL[l.carton_type]}</span>
                       </WithPhoto>
                     </th>
                     <td className="py-1.5 text-right tabular-nums">

@@ -8,7 +8,7 @@ import { StockTable } from "@/components/supplier/stock-table";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
 import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
-import { CARTON_TYPE_LABEL, dispatchCounts } from "@/lib/supplier";
+import { dispatchCounts } from "@/lib/supplier";
 import { loadDispatches, loadPlans, loadProduce, loadProductPhotos, loadStock } from "@/server/supplier-data";
 
 export const metadata: Metadata = { title: "Supplier portal" };
@@ -71,8 +71,7 @@ export default async function SupplierHome() {
               </p>
             </div>
             <p className="text-[15px]">
-              <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} {noun(counts.planned, "carton")} scanned · {CARTON_TYPE_LABEL.H} {formatNumber(counts.byType.H.loaded)}/{formatNumber(counts.byType.H.planned)} · {CARTON_TYPE_LABEL.T}{" "}
-              {formatNumber(counts.byType.T.loaded)}/{formatNumber(counts.byType.T.planned)}
+              <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} {noun(counts.planned, "carton")} scanned
             </p>
             <div className="flex flex-wrap gap-2">
               <Link href={`/supplier/dispatches/${next.id}/scan`} className={buttonClass("primary")}>

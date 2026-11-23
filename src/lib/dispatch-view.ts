@@ -79,7 +79,7 @@ export function nextStep(d: ListDispatch, who: Who): NextStep | null {
   return { label: "Close dispatch", to: "page" };
 }
 
-/** A dispatch's products and their cartons (both carton types together), most cartons first. */
+/** A dispatch's products and their cartons (a product on two lines counted once), most cartons first. */
 export function productCartons(lines: ListLine[]): { product_id: string; product: string; cartons: number }[] {
   const by = new Map<string, { product_id: string; product: string; cartons: number }>();
   for (const l of lines) {
@@ -90,12 +90,11 @@ export function productCartons(lines: ListLine[]): { product_id: string; product
   return [...by.values()].sort((a, b) => b.cartons - a.cartons || a.product.localeCompare(b.product));
 }
 
-type GroupLabel = { product_id: string; product: string; carton_type: CartonType; status: "issued" | "loaded" | "void"; carton_no: number; inbound_status: "received" | "rejected" | null };
+type GroupLabel = { product_id: string; product: string; status: "issued" | "loaded" | "void"; carton_no: number; inbound_status: "received" | "rejected" | null };
 
 export type LabelGroup<C extends GroupLabel> = {
   product_id: string;
   product: string;
-  carton_type: CartonType;
   planned: number;
   loaded: number;
   toScan: number;
@@ -107,22 +106,20 @@ export type LabelGroup<C extends GroupLabel> = {
 
 const ORDER = { issued: 0, loaded: 1, void: 2 } as const;
 
-/** A dispatch's labels by product and carton type, with what is loaded of what was planned. */
-export function labelGroups<C extends GroupLabel>(lines: ListLine[], cartons: C[]): LabelGroup<C>[] {
+/** A dispatch's labels by product, with what is loaded of what was planned. */
+export function labelGroups<C extends GroupLabel>(lines: { product_id: string; product: string; cartons: number }[], cartons: C[]): LabelGroup<C>[] {
   const groups = new Map<string, LabelGroup<C>>();
-  const key = (p: string, t: CartonType) => `${p}:${t}`;
-  const group = (p: string, product: string, t: CartonType) => {
-    const k = key(p, t);
-    let g = groups.get(k);
+  const group = (p: string, product: string) => {
+    let g = groups.get(p);
     if (!g) {
-      g = { product_id: p, product, carton_type: t, planned: 0, loaded: 0, toScan: 0, voided: 0, arrived: 0, labels: [] };
-      groups.set(k, g);
+      g = { product_id: p, product, planned: 0, loaded: 0, toScan: 0, voided: 0, arrived: 0, labels: [] };
+      groups.set(p, g);
     }
     return g;
   };
-  for (const l of lines) group(l.product_id, l.product, l.carton_type).planned += l.cartons;
+  for (const l of lines) group(l.product_id, l.product).planned += l.cartons;
   for (const c of cartons) {
-    const g = group(c.product_id, c.product, c.carton_type);
+    const g = group(c.product_id, c.product);
     g.labels.push(c);
     if (c.status === "loaded") g.loaded += 1;
     else if (c.status === "issued") g.toScan += 1;

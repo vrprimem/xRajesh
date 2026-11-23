@@ -6,28 +6,27 @@ import { Card, EmptyState, buttonClass } from "@/components/ui";
 import { arrivalOf, nextStep, productCartons, stageOf, type Who } from "@/lib/dispatch-view";
 import { dueLabel, formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { istDay } from "@/lib/report";
-import { CARTON_TYPE_LABEL, dispatchCounts, labelsOwed } from "@/lib/supplier";
+import { dispatchCounts, labelsOwed } from "@/lib/supplier";
 import type { DispatchSummary } from "@/server/supplier-data";
 
-/** Cartons sent this month by carton type, and the units: closed and received dispatches only. */
+/** Cartons sent this month, and the units: closed and received dispatches only. */
 export function MonthCartons({ dispatches }: { dispatches: DispatchSummary[] }) {
   const month = todayIST().slice(0, 7);
   const sent = dispatches.filter((d) => (d.status === "closed" || d.status === "received") && (d.closed_at ?? "").slice(0, 7) === month);
-  const total = { H: 0, T: 0, units: 0 };
+  const total = { cartons: 0, units: 0 };
   for (const d of sent) {
     const c = dispatchCounts(d.lines, d.cartons);
-    total.H += c.byType.H.loaded;
-    total.T += c.byType.T.loaded;
+    total.cartons += c.loaded;
     total.units += c.units;
   }
   return (
     <Card className="g-pad">
       <p className="t-card-title">Cartons sent this month</p>
       <p className="mt-2 text-[15px]">
-        <span className="t-score mr-0.5 text-[42px]">{formatNumber(total.H + total.T)}</span> {noun(total.H + total.T, "carton")} in {sent.length} {sent.length === 1 ? "dispatch" : "dispatches"}
+        <span className="t-score mr-0.5 text-[42px]">{formatNumber(total.cartons)}</span> {noun(total.cartons, "carton")} in {sent.length} {sent.length === 1 ? "dispatch" : "dispatches"}
       </p>
       <p className="t-caption mt-1">
-        {CARTON_TYPE_LABEL.H} {formatNumber(total.H)} · {CARTON_TYPE_LABEL.T} {formatNumber(total.T)} · {formatNumber(total.units)} {noun(total.units, "unit")}
+        {formatNumber(total.units)} {noun(total.units, "unit")}
       </p>
     </Card>
   );
@@ -61,7 +60,6 @@ function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
   const step = nextStep(d, who);
   const href = `${base}/${d.id}`;
   const missing = arrival ? arrival.loaded - arrival.arrived - arrival.rejected : 0;
-  const types = (["H", "T"] as const).filter((t) => c.byType[t].planned > 0);
 
   const look = STAGE_LOOK[stage];
   const band =
@@ -92,7 +90,6 @@ function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
           <Bar value={c.loaded} max={c.planned} label={`Cartons scanned on dispatch ${d.number}`} />
           <p className="text-[15px]">
             <b className="tabular-nums">{formatNumber(c.loaded)}</b> of {formatNumber(c.planned)} {noun(c.planned, "carton")} scanned
-            {types.length ? <span className="text-muted"> · {types.map((t) => `${CARTON_TYPE_LABEL[t]} ${c.byType[t].loaded}/${c.byType[t].planned}`).join(" · ")}</span> : null}
           </p>
           {owed ? (
             <p className={d.labels_error ? "text-[15px] font-semibold text-bad" : "t-caption"}>

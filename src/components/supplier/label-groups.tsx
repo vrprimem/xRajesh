@@ -7,7 +7,7 @@ import { useToast } from "@/components/toast";
 import { Card, Chip, SectionHead, buttonClass } from "@/components/ui";
 import { labelGroups } from "@/lib/dispatch-view";
 import { formatDateTime, formatNumber, noun } from "@/lib/format";
-import { CARTON_TYPE_LABEL, cartonWeightFor } from "@/lib/supplier";
+import { cartonWeightFor } from "@/lib/supplier";
 import { repackCartons, reprintCarton, voidCarton } from "@/server/actions/supplier";
 import type { CartonRow, LineRow } from "@/server/supplier-data";
 
@@ -28,7 +28,7 @@ function StatusChip({ c }: { c: CartonRow }) {
 }
 
 /**
- * A dispatch's labels by product and carton type: loaded of planned, then each label (still to scan first) with its
+ * A dispatch's labels by product: loaded of planned, then each label (still to scan first) with its
  * pieces, weight and downloads. While loading, the supplier can reprint, void, or change the pieces or weight of a
  * carton: the label shows both (and the inventory software adds the pieces to stock at VRPRIME), so a change gets a new
  * label. The weight follows the pieces until one is typed in, because the cartons are weighed at dispatch.
@@ -137,8 +137,8 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
       ) : (
         <ul className="flex flex-col gap-3">
           {groups.map((g) => {
-            const key = `${g.product_id}:${g.carton_type}`;
-            const lineUnits = lines.find((l) => l.product_id === g.product_id && l.carton_type === g.carton_type)?.units_per_carton ?? null;
+            const key = g.product_id;
+            const lineUnits = lines.find((l) => l.product_id === g.product_id)?.units_per_carton ?? null;
             const live = g.labels.filter((c) => c.status !== "void");
             const counts = [...new Set(live.map((c) => c.units))].sort((a, b) => b - a);
             const weights = [...new Set(live.map((c) => c.weight_per_carton))].sort((a, b) => (b ?? 0) - (a ?? 0));
@@ -153,7 +153,7 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
                     <WithPhoto src={photos[g.product_id]} name={g.product} size={48}>
                       <span className="block font-semibold">{g.product}</span>
                       <span className="block text-[14px] text-muted">
-                        {CARTON_TYPE_LABEL[g.carton_type]} cartons · {counts.length > 1 ? `${counts.join(" / ")} pieces` : `${counts[0] ?? lineUnits ?? "-"} pieces`} ·{" "}
+                        {counts.length > 1 ? `${counts.join(" / ")} pieces` : `${counts[0] ?? lineUnits ?? "-"} pieces`} ·{" "}
                         {weights.length > 1 ? weights.map((w) => kgText(w)).join(" / ") : kgText(weights[0] ?? null)}
                         {counts.length <= 1 && weights.length <= 1 ? " each" : ""}
                       </span>

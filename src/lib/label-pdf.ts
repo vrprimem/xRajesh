@@ -1,17 +1,15 @@
 // The carton labels of a dispatch as one PDF: one label per page, 100 x 75 mm, ready for a label printer.
 // Everything is drawn as vectors (no pictures), so it prints sharp at any size:
-//   - a band showing the carton type: solid black for hard, a dashed frame for 2-ply
-//   - product, pieces per carton, dispatch and carton number, carton weight, due date
+//   - product, then pieces per carton and carton weight in large type, then dispatch and carton number and due date
 //   - the VRPRIME inventory software's barcode number as Code 128 (what the warehouse scans) with the digits under it
 //   - the same number as a QR code (what a phone camera reads while loading)
 // Plain TypeScript with relative imports, so `node --test` can run it.
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
-import { code128Widths, type CartonType } from "./supplier.ts";
+import { code128Widths } from "./supplier.ts";
 
 export type PdfLabel = {
-  carton_type: CartonType;
   product: string;
   units: number;
   carton_no: number;
@@ -24,7 +22,6 @@ export const PAGE_W = 100 * MM;
 export const PAGE_H = 75 * MM;
 const PAD = 3 * MM;
 const BLACK = rgb(0, 0, 0);
-const WHITE = rgb(1, 1, 1);
 
 /** Text the built-in PDF fonts can draw: anything outside Latin-1 becomes "?". */
 export function pdfText(text: string): string {
@@ -69,29 +66,27 @@ function drawLabel(page: PDFPage, l: PdfLabel, dispatchNo: number, due: string, 
   const inner = PAGE_W - 2 * PAD;
   let top = PAGE_H - PAD;
 
-  // The carton-type band.
-  const bandH = 13 * MM;
-  const hard = l.carton_type === "H";
-  if (hard) page.drawRectangle({ x: PAD, y: top - bandH, width: inner, height: bandH, color: BLACK });
-  else page.drawRectangle({ x: PAD + 1.7, y: top - bandH + 1.7, width: inner - 3.4, height: bandH - 3.4, borderColor: BLACK, borderWidth: 3.4, borderDashArray: [6, 3.5] });
-  const ink = hard ? WHITE : BLACK;
-  page.drawText(hard ? "HARD CARTON" : "2-PLY CARTON", { x: PAD + 3 * MM, y: top - bandH / 2 - 5, size: 14, font: bold, color: ink });
-  const letter = hard ? "H" : "T";
-  const letterSize = 30;
-  page.drawText(letter, { x: PAD + inner - 3 * MM - bold.widthOfTextAtSize(letter, letterSize), y: top - bandH / 2 - 10.5, size: letterSize, font: bold, color: ink });
-  top -= bandH + 2 * MM;
-
   // Product name, up to two lines.
-  const nameSize = 12.5;
+  const nameSize = 15;
   for (const line of wrap(l.product, bold, nameSize, inner, 2)) {
     top -= nameSize;
     page.drawText(line, { x: PAD, y: top, size: nameSize, font: bold, color: BLACK });
-    top -= 1.5;
+    top -= 2;
+  }
+  top -= 2 * MM;
+
+  // Pieces and weight in large type: what is checked when loading and when it arrives.
+  const bigSize = 18;
+  top -= bigSize;
+  page.drawText(pdfText(`${l.units.toLocaleString("en-IN")} pcs/carton`), { x: PAD, y: top, size: bigSize, font: bold, color: BLACK });
+  if (l.weight_per_carton) {
+    const kg = pdfText(`${l.weight_per_carton} kg`);
+    page.drawText(kg, { x: PAD + inner - bold.widthOfTextAtSize(kg, bigSize), y: top, size: bigSize, font: bold, color: BLACK });
   }
   top -= 2.5 * MM;
 
   // Two lines of facts, left and right.
-  const factSize = 9.5;
+  const factSize = 10;
   const row = (left: string, right: string) => {
     top -= factSize;
     page.drawText(pdfText(left), { x: PAD, y: top, size: factSize, font: regular, color: BLACK });
@@ -99,14 +94,14 @@ function drawLabel(page: PDFPage, l: PdfLabel, dispatchNo: number, due: string, 
     page.drawText(r, { x: PAD + inner - regular.widthOfTextAtSize(r, factSize), y: top, size: factSize, font: regular, color: BLACK });
     top -= 3;
   };
-  row(`${l.units.toLocaleString("en-IN")} pcs/carton`, `Dispatch ${dispatchNo} - Carton ${l.carton_no}`);
-  row(`To: VRPRIME${l.weight_per_carton ? ` - ${l.weight_per_carton} kg` : ""}`, due);
+  row(`Dispatch ${dispatchNo} - Carton ${l.carton_no}`, due);
+  row("To: VRPRIME", "");
 
-  // Barcode (left) and QR code (right) along the bottom.
-  const qrSide = 21 * MM;
+  // Barcode (left) and QR code (right) along the bottom, as tall as the room above allows: easier to scan.
+  const qrSide = 24 * MM;
   const gap = 3 * MM;
   const digitsSize = 10;
-  const barH = 17 * MM;
+  const barH = 24 * MM;
   const bottom = PAD;
   const barAreaW = inner - qrSide - gap;
   const { bars, modules } = barRuns(l.barcode);
@@ -143,26 +138,12 @@ export function sheetSlot(i: number): { x: number; y: number } {
   return { x: SHEET.left + col * (SHEET.w + SHEET.colGap), y: A4_H - SHEET.top - (row + 1) * SHEET.h };
 }
 
-/** The short label for a sheet: carton type on the left, then product, facts, barcode and QR code. */
+/** The short label for a sheet: product, facts, then the barcode and QR code. */
 function drawSmall(page: PDFPage, ox: number, oy: number, l: PdfLabel, dispatchNo: number, due: string, regular: PDFFont, bold: PDFFont) {
   const pad = 2 * MM;
   const w = SHEET.w;
   const h = SHEET.h;
-  const hard = l.carton_type === "H";
-
-  // Carton type: a solid black block with H, or a dashed frame with T, the full height on the left.
-  const tagW = 11 * MM;
-  const tagH = h - 2 * pad;
-  if (hard) page.drawRectangle({ x: ox + pad, y: oy + pad, width: tagW, height: tagH, color: BLACK });
-  else page.drawRectangle({ x: ox + pad + 1.2, y: oy + pad + 1.2, width: tagW - 2.4, height: tagH - 2.4, borderColor: BLACK, borderWidth: 2.4, borderDashArray: [4, 2.5] });
-  const ink = hard ? WHITE : BLACK;
-  const letter = hard ? "H" : "T";
-  page.drawText(letter, { x: ox + pad + (tagW - bold.widthOfTextAtSize(letter, 24)) / 2, y: oy + pad + tagH / 2 - 2, size: 24, font: bold, color: ink });
-  const word = hard ? "HARD" : "2-PLY";
-  page.drawText(word, { x: ox + pad + (tagW - bold.widthOfTextAtSize(word, 6.5)) / 2, y: oy + pad + tagH / 2 - 11, size: 6.5, font: bold, color: ink });
-
-  // The rest of the label, right of the tag.
-  const x0 = ox + pad + tagW + 2 * MM;
+  const x0 = ox + pad;
   const right = ox + w - pad;
   const areaW = right - x0;
   let top = oy + h - pad;

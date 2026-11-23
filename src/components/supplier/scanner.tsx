@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { buttonClass } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 import {
-  CARTON_TYPE_LABEL,
   SCAN_RESULT_TEXT,
   addPending,
   cleanBarcode,
@@ -14,13 +13,12 @@ import {
   pendingKey,
   readPending,
   scanIsGood,
-  type CartonType,
   type PendingScan,
   type ScanResult,
 } from "@/lib/supplier";
 import { scanCartons } from "@/server/actions/supplier";
 
-export type ScanCarton = { barcode: string; carton_no: number; carton_type: CartonType; product: string; status: "issued" | "loaded" | "void" };
+export type ScanCarton = { barcode: string; carton_no: number; product: string; status: "issued" | "loaded" | "void" };
 
 type Feedback = { tone: "ok" | "warn" | "bad"; title: string; detail: string } | null;
 type Detector = { detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]> };
@@ -78,11 +76,11 @@ function signal(good: boolean) {
 }
 
 /**
- * The loading screen. Every carton is scanned as it goes on the vehicle; the count runs live, split by carton type.
+ * The loading screen. Every carton is scanned as it goes on the vehicle; the count runs live.
  * A scan is first kept on the phone and then sent, so loading carries on with no signal: the scans wait and go when
  * the connection is back. The same carton twice counts once.
  */
-export function Scanner({ dispatchId, number, cartons, planned, backHref }: { dispatchId: string; number: number; cartons: ScanCarton[]; planned: Record<CartonType, number>; backHref: string }) {
+export function Scanner({ dispatchId, number, cartons, planned, backHref }: { dispatchId: string; number: number; cartons: ScanCarton[]; planned: number; backHref: string }) {
   const [status, setStatus] = useState(() => new Map(cartons.map((c) => [c.barcode, c.status])));
   const [waiting, setWaiting] = useState<PendingScan[]>([]);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -170,7 +168,7 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
       keep(addPending(queue.current, code, new Date(now).toISOString()));
       if (known) {
         signal(true);
-        setFeedback({ tone: "ok", title: `Label ${known.carton_no} · ${CARTON_TYPE_LABEL[known.carton_type]}`, detail: known.product });
+        setFeedback({ tone: "ok", title: `Label ${known.carton_no}`, detail: known.product });
       } else {
         // A label made after this screen opened (a reprint), or not ours: the server decides.
         setFeedback({ tone: "warn", title: "Checking this label", detail: code });
@@ -258,19 +256,9 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
     [],
   );
 
-  const count = (type: CartonType) => {
-    let loaded = 0;
-    let onPhone = 0;
-    const waitingCodes = new Set(waiting.map((s) => s.barcode));
-    for (const c of cartons) {
-      if (c.carton_type !== type) continue;
-      if (status.get(c.barcode) === "loaded") loaded += 1;
-      else if (waitingCodes.has(c.barcode)) onPhone += 1;
-    }
-    return { loaded, onPhone };
-  };
-  const h = count("H");
-  const t = count("T");
+  const waitingCodes = new Set(waiting.map((s) => s.barcode));
+  let scanned = 0;
+  for (const c of cartons) if (status.get(c.barcode) === "loaded" || waitingCodes.has(c.barcode)) scanned += 1;
   const tone = feedback?.tone === "ok" ? "border-ok bg-ok-soft" : feedback?.tone === "warn" ? "border-warn bg-warn-soft" : "border-bad bg-bad-soft";
 
   return (
@@ -282,19 +270,12 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-2" aria-live="polite">
-        {(["H", "T"] as const).map((type) => {
-          const c = type === "H" ? h : t;
-          return (
-            <div key={type} className="sp-card p-3">
-              <p className="t-caption">{CARTON_TYPE_LABEL[type]}</p>
-              <p className="t-score mt-1.5 text-[52px]">
-                {formatNumber(c.loaded + c.onPhone)}
-                <span className="text-[22px] text-muted"> / {formatNumber(planned[type])}</span>
-              </p>
-            </div>
-          );
-        })}
+      <div className="sp-card p-3" aria-live="polite">
+        <p className="t-caption">Cartons scanned</p>
+        <p className="t-score mt-1.5 text-[52px]">
+          {formatNumber(scanned)}
+          <span className="text-[22px] text-muted"> / {formatNumber(planned)}</span>
+        </p>
       </div>
 
       {waiting.length ? (

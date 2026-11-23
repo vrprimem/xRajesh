@@ -8,7 +8,7 @@ import type { ReportData } from "@/server/supplier-data";
 const monthName = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" });
 
 /**
- * The carton report for one month: cartons sent (closed dispatches) by type, how many have arrived at VRPRIME, and
+ * The carton report for one month: cartons sent (closed dispatches), how many have arrived at VRPRIME, and
  * the units, by dispatch, by product and by day; each table downloads as CSV. Used by both sides; `base` is this page.
  */
 export function ReportView({ data, month, base, title, dispatchBase }: { data: ReportData; month: string; base: string; title: string; dispatchBase: string }) {
@@ -42,16 +42,17 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
       ) : (
         <>
           <Card className="g-pad">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ["Dispatches", t.dispatches],
-                ["Cartons sent", t.cartons],
-                ["Hard / 2-ply", `${formatNumber(t.hard)} / ${formatNumber(t.twoPly)}`],
-                ["Units sent", t.units],
-              ].map(([label, value]) => (
-                <div key={label as string}>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {(
+                [
+                  ["Dispatches", t.dispatches],
+                  ["Cartons sent", t.cartons],
+                  ["Units sent", t.units],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label}>
                   <p className="t-caption">{label}</p>
-                  <p className="t-score mt-1.5 text-[36px]">{typeof value === "number" ? formatNumber(value) : value}</p>
+                  <p className="t-score mt-1.5 text-[36px]">{formatNumber(value)}</p>
                 </div>
               ))}
             </div>
@@ -68,7 +69,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
                 action={
                   <CsvButton
                     file={`${file}-dispatches.csv`}
-                    csv={toCsv(["Dispatch", "Closed on", "Status", "Hard cartons", "2-ply cartons", "Cartons", "Units", "Arrived at VRPRIME"], r.byDispatch.map((d) => [d.number, d.day, d.status, d.hard, d.twoPly, d.cartons, d.units, d.arrived]))}
+                    csv={toCsv(["Dispatch", "Closed on", "Status", "Cartons", "Units", "Arrived at VRPRIME"], r.byDispatch.map((d) => [d.number, d.day, d.status, d.cartons, d.units, d.arrived]))}
                   />
                 }
               />
@@ -78,8 +79,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
                 <tr>
                   <th scope="col">Dispatch</th>
                   <th scope="col">Closed</th>
-                  <th scope="col" className="num">Hard</th>
-                  <th scope="col" className="num">2-ply</th>
+                  <th scope="col" className="num">Cartons</th>
                   <th scope="col" className="num">Units</th>
                   <th scope="col" className="num">Arrived</th>
                 </tr>
@@ -99,8 +99,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
                         )}
                       </th>
                       <td>{formatDate(d.day)}</td>
-                      <td className="num tabular-nums">{formatNumber(d.hard)}</td>
-                      <td className="num tabular-nums">{formatNumber(d.twoPly)}</td>
+                      <td className="num tabular-nums">{formatNumber(d.cartons)}</td>
                       <td className="num tabular-nums">{formatNumber(d.units)}</td>
                       <td className={`num tabular-nums ${d.arrived < d.cartons ? "text-warn" : ""}`}>
                         {formatNumber(d.arrived)} / {formatNumber(d.cartons)}
@@ -119,7 +118,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
                 action={
                   <CsvButton
                     file={`${file}-products.csv`}
-                    csv={toCsv(["Product", "Hard cartons", "2-ply cartons", "Cartons", "Units", "Cartons arrived"], r.byProduct.map((p) => [p.product, p.hard, p.twoPly, p.cartons, p.units, p.arrived]))}
+                    csv={toCsv(["Product", "Cartons", "Units", "Cartons arrived"], r.byProduct.map((p) => [p.product, p.cartons, p.units, p.arrived]))}
                   />
                 }
               />
@@ -128,8 +127,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
               <thead>
                 <tr>
                   <th scope="col" className="min-w-[170px]">Product</th>
-                  <th scope="col" className="num">Hard</th>
-                  <th scope="col" className="num">2-ply</th>
+                  <th scope="col" className="num">Cartons</th>
                   <th scope="col" className="num">Units</th>
                   <th scope="col" className="num">Arrived</th>
                 </tr>
@@ -138,8 +136,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
                 {r.byProduct.map((p) => (
                   <tr key={p.product}>
                     <th scope="row" className="text-left font-semibold">{p.product}</th>
-                    <td className="num tabular-nums">{formatNumber(p.hard)}</td>
-                    <td className="num tabular-nums">{formatNumber(p.twoPly)}</td>
+                    <td className="num tabular-nums">{formatNumber(p.cartons)}</td>
                     <td className="num tabular-nums">{formatNumber(p.units)}</td>
                     <td className="num tabular-nums">
                       {formatNumber(p.arrived)} / {formatNumber(p.cartons)}
@@ -154,15 +151,14 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
             <div className="g-pad pb-0">
               <SectionHead
                 title="By day"
-                action={<CsvButton file={`${file}-days.csv`} csv={toCsv(["Day", "Hard cartons", "2-ply cartons", "Cartons", "Units", "Cartons arrived"], r.byDay.map((d) => [d.day, d.hard, d.twoPly, d.cartons, d.units, d.arrived]))} />}
+                action={<CsvButton file={`${file}-days.csv`} csv={toCsv(["Day", "Cartons", "Units", "Cartons arrived"], r.byDay.map((d) => [d.day, d.cartons, d.units, d.arrived]))} />}
               />
             </div>
             <table className="ledger">
               <thead>
                 <tr>
                   <th scope="col">Day</th>
-                  <th scope="col" className="num">Hard</th>
-                  <th scope="col" className="num">2-ply</th>
+                  <th scope="col" className="num">Cartons</th>
                   <th scope="col" className="num">Units</th>
                 </tr>
               </thead>
@@ -170,8 +166,7 @@ export function ReportView({ data, month, base, title, dispatchBase }: { data: R
                 {r.byDay.map((d) => (
                   <tr key={d.day}>
                     <th scope="row" className="text-left font-normal">{formatDate(d.day)}</th>
-                    <td className="num tabular-nums">{formatNumber(d.hard)}</td>
-                    <td className="num tabular-nums">{formatNumber(d.twoPly)}</td>
+                    <td className="num tabular-nums">{formatNumber(d.cartons)}</td>
                     <td className="num tabular-nums">{formatNumber(d.units)}</td>
                   </tr>
                 ))}

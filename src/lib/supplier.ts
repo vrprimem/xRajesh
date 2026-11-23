@@ -1,8 +1,11 @@
 // The supplier portal's plain logic: labels and barcodes, the products sheet, the scan list kept on the phone, and the
 // counts of a dispatch. No React, no database: `node --test` runs it.
 
+/**
+ * The database still keeps a carton type (H or T) on products, plan lines and labels, and matches a dispatch's labels
+ * to its lines by it. The portal no longer shows or asks for it: a line takes its product's, and a label its line's.
+ */
 export type CartonType = "H" | "T";
-export const CARTON_TYPE_LABEL: Record<CartonType, string> = { H: "Hard", T: "2-ply" };
 
 export const PRODUCT_CATEGORIES = ["kitchen_cleaner", "repellent", "other_cleaning", "other"] as const;
 export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
@@ -103,7 +106,6 @@ export type ProductInput = {
   master_code: string | null;
   category: ProductCategory;
   units_per_carton: number;
-  carton_type: CartonType;
   daily_capacity: number | null;
   active: boolean;
   /** Carton weight in kg, sent to the inventory software with every label. */
@@ -118,7 +120,6 @@ const COLUMNS: Record<keyof Omit<ProductInput, "active">, string[]> = {
   master_code: ["mastersku", "vrprimemastersku", "master", "mastercode", "sku", "vrprimesku", "code"],
   category: ["category", "type"],
   units_per_carton: ["unitspercarton", "pcspercarton", "piecespercarton", "pcscarton", "cartonqty", "unitscarton", "packsize", "pcs"],
-  carton_type: ["cartontype", "carton", "defaultcartontype"],
   daily_capacity: ["dailycapacity", "capacity", "dailyproductioncapacity", "perday", "capacityperday"],
   weight_per_carton: ["cartonweight", "weightpercarton", "weight", "weightkg", "cartonweightkg", "weightpercartonkg", "kgpercarton"],
 };
@@ -142,13 +143,6 @@ function categoryOf(text: string): ProductCategory | null {
   return null;
 }
 
-function cartonTypeOf(text: string): CartonType | null {
-  const k = key(text);
-  if (!k || k === "h" || k.startsWith("hard")) return "H";
-  if (k === "t" || k.startsWith("2ply") || k.startsWith("twoply") || k === "ply2" || k === "2") return "T";
-  return null;
-}
-
 const wholeNumber = (text: string): number | null => {
   const t = text.replace(/,/g, "").trim();
   return /^\d+$/.test(t) ? Number(t) : null;
@@ -156,8 +150,9 @@ const wholeNumber = (text: string): number | null => {
 
 /**
  * Reads the products sheet (the rows of a .csv or the first sheet of an .xlsx). The first row is the headings, found by
- * name in any order: a name and units per carton are needed; master SKU, category, carton type and daily capacity are
- * optional. A row with a problem is reported with its row number and nothing is imported until the sheet is clean.
+ * name in any order: a name and units per carton are needed; master SKU, category, daily capacity and carton weight are
+ * optional, and any other column (an old "Carton type" one, say) is left alone. A row with a problem is reported with
+ * its row number and nothing is imported until the sheet is clean.
  */
 export function parseProductsTable(lines: string[][]): { rows: ProductInput[]; errors: string[] } {
   const errors: string[] = [];
@@ -168,7 +163,6 @@ export function parseProductsTable(lines: string[][]): { rows: ProductInput[]; e
     master: col(COLUMNS.master_code),
     category: col(COLUMNS.category),
     units: col(COLUMNS.units_per_carton),
-    carton: col(COLUMNS.carton_type),
     capacity: col(COLUMNS.daily_capacity),
     weight: col(COLUMNS.weight_per_carton),
   };
@@ -191,14 +185,12 @@ export function parseProductsTable(lines: string[][]): { rows: ProductInput[]; e
     if (units === null || units < 1 || units > 100000) return void errors.push(`Row ${rowNo} (${name}): units per carton must be a whole number from 1.`);
     const category = categoryOf(cell(line, at.category));
     if (!category) return void errors.push(`Row ${rowNo} (${name}): category "${cell(line, at.category)}" is not kitchen cleaner, repellent, other cleaning or other.`);
-    const carton = cartonTypeOf(cell(line, at.carton));
-    if (!carton) return void errors.push(`Row ${rowNo} (${name}): carton type "${cell(line, at.carton)}" is not Hard or 2-ply.`);
     const capText = cell(line, at.capacity);
     const capacity = capText === "" ? null : wholeNumber(capText);
     if (capText !== "" && capacity === null) return void errors.push(`Row ${rowNo} (${name}): daily capacity must be a whole number.`);
     const weight = parseWeight(cell(line, at.weight));
     if (weight === "bad") return void errors.push(`Row ${rowNo} (${name}): carton weight "${cell(line, at.weight)}" must be a number of kg above 0.`);
-    rows.push({ name, master_code: cell(line, at.master) || null, category, units_per_carton: units, carton_type: carton, daily_capacity: capacity, active: true, weight_per_carton: weight });
+    rows.push({ name, master_code: cell(line, at.master) || null, category, units_per_carton: units, daily_capacity: capacity, active: true, weight_per_carton: weight });
   });
   if (rows.length > MAX_PRODUCT_ROWS) errors.push(`The sheet has ${rows.length} products; ${MAX_PRODUCT_ROWS} at most in one go.`);
   if (!rows.length && !errors.length) errors.push("The sheet has no products under its headings.");
@@ -207,34 +199,24 @@ export function parseProductsTable(lines: string[][]): { rows: ProductInput[]; e
 
 // ---- A dispatch's counts -------------------------------------------------------------------------------------------------
 
-export type CartonLite = { carton_type: CartonType; status: "issued" | "loaded" | "void"; units: number; replaces?: string | null };
-export type TypeCount = { planned: number; loaded: number; left: number };
-export type DispatchCounts = { planned: number; loaded: number; left: number; voided: number; units: number; byType: Record<CartonType, TypeCount> };
+export type CartonLite = { status: "issued" | "loaded" | "void"; units: number; replaces?: string | null };
+export type DispatchCounts = { planned: number; loaded: number; left: number; voided: number; units: number };
 
 /**
- * Cartons scanned against planned, split by carton type. Planned comes from the plan's lines (a reprint or a void
- * does not change the plan); loaded, left (label not scanned and not void) and voided come from the labels.
+ * Cartons scanned against planned. Planned comes from the plan's lines (a reprint or a void does not change the plan);
+ * loaded, left (label not scanned and not void) and voided come from the labels.
  */
-export function dispatchCounts(lines: { carton_type: CartonType; cartons: number }[], cartons: CartonLite[]): DispatchCounts {
-  const byType: Record<CartonType, TypeCount> = { H: { planned: 0, loaded: 0, left: 0 }, T: { planned: 0, loaded: 0, left: 0 } };
-  for (const l of lines) byType[l.carton_type].planned += l.cartons;
-  let voided = 0;
-  let units = 0;
+export function dispatchCounts(lines: { cartons: number }[], cartons: CartonLite[]): DispatchCounts {
+  const counts: DispatchCounts = { planned: 0, loaded: 0, left: 0, voided: 0, units: 0 };
+  for (const l of lines) counts.planned += l.cartons;
   for (const c of cartons) {
     if (c.status === "loaded") {
-      byType[c.carton_type].loaded += 1;
-      units += c.units;
-    } else if (c.status === "issued") byType[c.carton_type].left += 1;
-    else voided += 1;
+      counts.loaded += 1;
+      counts.units += c.units;
+    } else if (c.status === "issued") counts.left += 1;
+    else counts.voided += 1;
   }
-  return {
-    planned: byType.H.planned + byType.T.planned,
-    loaded: byType.H.loaded + byType.T.loaded,
-    left: byType.H.left + byType.T.left,
-    voided,
-    units,
-    byType,
-  };
+  return counts;
 }
 
 /** A label as far as "is one still owed" goes. */
