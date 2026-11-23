@@ -57,6 +57,7 @@ declare
   ph2 text;
   stored boolean;
   d_r uuid;
+  d_w uuid;
   ids uuid[];
 begin
   insert into public.warehouses (name, vrprime_id) values ('SP Check Main', 'spchk-1') returning id into w_main;
@@ -1017,10 +1018,10 @@ begin
   -- The warehouse person changes the third carton to 12 pieces.
   perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  n := public.supplier_cartons_repack(array[ids[3]], 12);
+  n := public.supplier_cartons_repack(array[ids[3]], 12); -- pieces alone, as the app called it before weights
   assert n = 1, 'one label changed';
   assert (select status = 'void' and void_reason = 'pieces changed' from public.supplier_cartons where id = ids[3]), 'its old label is void';
-  n := public.supplier_cartons_repack(array[ids[1]], 20);
+  n := public.supplier_cartons_repack(array[ids[1]], 20, null);
   assert n = 0, 'a label that already has the count is left as it is';
   reset role;
   res := public.supplier_labels_claim(d_r);
@@ -1038,17 +1039,17 @@ begin
   -- The owner changes the other two to 18 at once; refused cases; then giving up unused labels.
   perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  n := public.supplier_cartons_repack(array[ids[1], ids[2]], 18);
+  n := public.supplier_cartons_repack(array[ids[1], ids[2]], 18, null);
   assert n = 2, 'two labels changed at once';
   blocked := false;
   begin
-    perform public.supplier_cartons_repack(array[ids[3]], 5);
+    perform public.supplier_cartons_repack(array[ids[3]], 5, null);
   exception when invalid_parameter_value then blocked := true;
   end;
   assert blocked, 'a void label cannot be changed';
   blocked := false;
   begin
-    perform public.supplier_cartons_repack(array[(select id from public.supplier_cartons where barcode = '1029000000000099')], 0);
+    perform public.supplier_cartons_repack(array[(select id from public.supplier_cartons where barcode = '1029000000000099')], 0, null);
   exception when invalid_parameter_value then blocked := true;
   end;
   assert blocked, 'a carton holds at least one piece';
@@ -1056,7 +1057,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
   blocked := false;
   begin
-    perform public.supplier_cartons_repack(array[q], 10);
+    perform public.supplier_cartons_repack(array[q], 10, null);
   exception when insufficient_privilege then blocked := true;
   end;
   assert blocked, 'another supplier cannot change these labels';
@@ -1071,6 +1072,57 @@ begin
   reset role;
   assert public.supplier_labels_claim(d_r) is null, 'and then nothing is owed';
   assert (select cartons from public.supplier_dispatch_lines where dispatch_id = d_r) = 3, 'the plan keeps its 3 cartons';
+
+  -- Carton weight: a dispatch line can carry its own; a carton can get a new weight with its pieces, or alone.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  d_w := public.supplier_dispatch_create(s_a, current_date + 2, 'weight check',
+    jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 2, 'weight_per_carton', 7.25)));
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_create(s_a, current_date + 2, null,
+      jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1, 'weight_per_carton', 5), jsonb_build_object('product_id', p_a, 'cartons', 1, 'weight_per_carton', 6)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'one product cannot be on two lines with different weights';
+  reset role;
+  assert (select weight_per_carton from public.supplier_dispatch_lines where dispatch_id = d_w) = 7.25, 'a dispatch line keeps the weight given for it';
+  res := public.supplier_labels_claim(d_w);
+  assert (res->'lines'->0->>'weight')::numeric = 7.25, 'its labels are asked for with that weight: ' || res::text;
+  n := public.supplier_labels_save(d_w, (select jsonb_agg(jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 20, 'serial', '1039' || lpad(g::text, 12, '0'), 'svg', null))
+                                         from generate_series(1, 2) g));
+  perform public.supplier_labels_done(d_w, null);
+  assert (select count(*) from public.supplier_cartons where dispatch_id = d_w and weight_per_carton = 7.25) = 2, 'and the labels carry it';
+  select array_agg(id order by carton_no) into ids from public.supplier_cartons where dispatch_id = d_w;
+  set local role authenticated;
+  n := public.supplier_cartons_repack(array[ids[1]], 20, 7.25);
+  assert n = 0, 'the same pieces and weight change nothing';
+  n := public.supplier_cartons_repack(array[ids[1]], 20, 7.9);
+  assert n = 1, 'a new weight alone makes a new label';
+  assert (select void_reason from public.supplier_cartons where id = ids[1]) = 'weight changed', 'the old label says why it is void';
+  n := public.supplier_cartons_repack(array[ids[2]], 10, 3.8);
+  assert n = 1, 'pieces and weight together';
+  reset role;
+  res := public.supplier_labels_claim(d_w);
+  assert (select (l->>'weight')::numeric from jsonb_array_elements(res->'lines') l where (l->>'units')::int = 20) = 7.9,
+    'the full carton is asked for at its new weight: ' || res::text;
+  assert (select (l->>'weight')::numeric from jsonb_array_elements(res->'lines') l where (l->>'units')::int = 10) = 3.8, 'the 10-piece carton at its own weight';
+  n := public.supplier_labels_save(d_w, jsonb_build_array(
+    jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 20, 'serial', '1039000000000091', 'svg', null),
+    jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 10, 'serial', '1039000000000092', 'svg', null)));
+  assert n = 2, 'both new labels saved';
+  perform public.supplier_labels_done(d_w, null);
+  assert (select weight_per_carton from public.supplier_cartons where barcode = '1039000000000091') = 7.9, 'the new full carton weighs 7.9 kg';
+  assert (select weight_per_carton from public.supplier_cartons where barcode = '1039000000000092') = 3.8, 'the 10-piece carton weighs 3.8 kg';
+  q := (select c.id from public.supplier_cartons c where c.barcode = '1039000000000092');
+  set local role authenticated;
+  blocked := false;
+  begin
+    perform public.supplier_cartons_repack(array[q], 10, 0);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a weight of 0 is refused';
+  reset role;
 
   -- =====================================================================================
   -- 10. A deactivated supplier login, a deactivated supplier, a signed-out visitor

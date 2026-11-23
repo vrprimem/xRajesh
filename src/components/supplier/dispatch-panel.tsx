@@ -58,6 +58,8 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
   const made = counts.planned - owed;
   const arrived = cartons.filter((c) => c.inbound_status === "received").length;
   const supplierSide = who !== "vrprime";
+  // What the loaded cartons weigh, by their labels (cartons with no weight on the label are left out).
+  const loadedKg = Math.round(cartons.filter((c) => c.status === "loaded").reduce((sum, c) => sum + (c.weight_per_carton ?? 0), 0) * 10) / 10;
   const run = (action: () => Promise<ActionResult>, confirmText?: string) => {
     if (confirmText && !window.confirm(confirmText)) return;
     startTransition(async () => {
@@ -119,6 +121,7 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
         </div>
         <p className="mt-3 text-[15px]">
           <span className="font-semibold tabular-nums">{formatNumber(counts.loaded)}</span> of {formatNumber(counts.planned)} {noun(counts.planned, "carton")} scanned · <span className="tabular-nums">{formatNumber(counts.units)}</span> {noun(counts.units, "unit")} loaded
+          {loadedKg ? ` · ${formatNumber(loadedKg)} kg` : ""}
           {counts.voided ? ` · ${formatNumber(counts.voided)} ${counts.voided === 1 ? "label" : "labels"} void` : ""}
           {!open && d.status !== "cancelled" && counts.loaded ? ` · ${formatNumber(arrived)} of ${formatNumber(counts.loaded)} scanned in at VRPRIME` : ""}
         </p>

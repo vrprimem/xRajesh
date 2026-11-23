@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addPending,
+  cartonWeightFor,
   cartonsFor,
   cleanBarcode,
   code128Svg,
@@ -176,4 +177,12 @@ test("suggested quantity: up to twice the minimum, in full cartons", () => {
   assert.equal(suggestedUnits(40, 60, 150, 20), 200);
   assert.equal(suggestedUnits(0, 0, 100, 24), 216, "200 short is 9 cartons of 24");
   assert.equal(suggestedUnits(500, 0, 150, 20), 0);
+});
+
+test("a carton's weight follows its pieces, worked out from the full carton", () => {
+  assert.equal(cartonWeightFor(8.5, 24, 12), 4.25);
+  assert.equal(cartonWeightFor(8.46, 20, 20), 8.46);
+  assert.equal(cartonWeightFor(8.5, 24, 7), 2.48);
+  assert.equal(cartonWeightFor(null, 24, 12), null);
+  assert.equal(cartonWeightFor(8.5, 24, 0), null);
 });

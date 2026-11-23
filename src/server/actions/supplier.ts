@@ -90,7 +90,7 @@ const dispatchSchema = z.object({
   due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
   note: z.string().trim().max(500).optional().default(""),
   lines: z
-    .array(z.object({ product_id: UUID, cartons: z.number().int().min(1, "At least 1 carton").max(5000), carton_type: z.enum(["H", "T"]).optional(), units_per_carton: z.number().int().min(1).max(100000).optional() }))
+    .array(z.object({ product_id: UUID, cartons: z.number().int().min(1, "At least 1 carton").max(5000), carton_type: z.enum(["H", "T"]).optional(), units_per_carton: z.number().int().min(1).max(100000).optional(), weight_per_carton: z.number().gt(0).max(1000).optional() }))
     .min(1, "Add at least one product")
     .max(200),
 });
@@ -504,25 +504,29 @@ export async function removeMasterPhoto(code: unknown): Promise<ActionResult> {
 // ---- Pieces in a carton ----------------------------------------------------------------------------------------------------
 
 /**
- * Gives labels not loaded yet a new pieces count: the inventory software prints the count on the label (and adds it to
- * stock when the carton is scanned in), so each gets a new label with the count and the old one becomes void.
+ * Gives labels not loaded yet a new pieces count and carton weight (kg; null for none given). The label shows both,
+ * and the inventory software adds the pieces to stock when the carton is scanned in, so each carton changed gets a new
+ * label and the old one becomes void.
  */
-export async function repackCartons(cartonIds: unknown, units: unknown): Promise<ActionResult> {
+export async function repackCartons(cartonIds: unknown, units: unknown, weight: unknown = null): Promise<ActionResult> {
   const who = await actor();
   if (!who) return NOT_SIGNED_IN;
   const ids = z.array(UUID).min(1).max(500).safeParse(cartonIds);
   const n = z.number().int().min(1).max(100000).safeParse(units);
+  const w = z.number().gt(0).max(1000).nullable().safeParse(weight);
   if (!ids.success) return NOT_ALLOWED;
   if (!n.success) return { ok: false, message: "Enter the pieces in the carton: a whole number from 1." };
+  if (!w.success) return { ok: false, message: "Enter the carton weight in kg, above 0 (or leave it empty)." };
   const db = await supplierDb();
-  const { data, error } = await db.rpc("supplier_cartons_repack", { p_cartons: ids.data, p_units: n.data });
-  if (error) return failed(error, "change the pieces");
+  const { data, error } = await db.rpc("supplier_cartons_repack", { p_cartons: ids.data, p_units: n.data, p_weight: w.data });
+  if (error) return failed(error, "change the carton");
   refresh();
   const changed = Number(data ?? 0);
+  const what = `${n.data} pieces${w.data ? ` and ${w.data} kg` : ""}`;
   return {
     ok: true,
     message: changed
-      ? `${changed === 1 ? "A new label is" : `${changed} new labels are`} being made with ${n.data} pieces. In a few seconds download ${changed === 1 ? "it" : "them"} and stick ${changed === 1 ? "it" : "them"} on the carton${changed === 1 ? "" : "s"} in place of the old one${changed === 1 ? "" : "s"}.`
-      : `Already ${n.data} pieces: nothing changed.`,
+      ? `${changed === 1 ? "A new label is" : `${changed} new labels are`} being made with ${what}. In a few seconds download ${changed === 1 ? "it" : "them"} and stick ${changed === 1 ? "it" : "them"} on the carton${changed === 1 ? "" : "s"} in place of the old one${changed === 1 ? "" : "s"}.`
+      : `Already ${what}: nothing changed.`,
   };
 }

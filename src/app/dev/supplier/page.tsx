@@ -4,6 +4,7 @@ import { DispatchList, MonthCartons } from "@/components/supplier/dispatch-list"
 import AuthLayout from "@/app/(auth)/layout";
 import { SignInDoor } from "@/components/auth/sign-in-door";
 import { PortalShell } from "@/components/portal-shell";
+import { DispatchForm } from "@/components/supplier/dispatch-form";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
 import { FactoryReset } from "@/components/supplier/factory-reset";
 import { Label, LABEL_CSS } from "@/components/supplier/label";
@@ -111,7 +112,7 @@ const PLANS: PlanRow[] = [
   ] },
 ];
 
-const VIEWS = ["home", "dispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
+const VIEWS = ["home", "newdispatch", "dispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
 
 export default async function SupplierPreviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (process.env.NODE_ENV !== "development") notFound();
@@ -163,6 +164,13 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
           <DispatchList dispatches={DISPATCHES} base="/dev/supplier" who={who} photos={PHOTOS} warehouse="Bhiwandi" emptyBody="" />
           <StockTable rows={STOCK} canSetMin={false} />
         </div>
+      ) : null}
+
+      {view === "newdispatch" ? (
+        <>
+          <PageTitle title="New dispatch" sub="Labels are made by the inventory software as soon as you save" />
+          <DispatchForm supplierId={SUPPLIER} products={PRODUCTS} base="/dev/supplier" tomorrow="2026-11-24" photos={PHOTOS} />
+        </>
       ) : null}
 
       {view === "dispatch" ? (

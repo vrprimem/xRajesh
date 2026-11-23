@@ -242,13 +242,13 @@ export type LabelLite = { product_id: string; carton_type: CartonType; status: "
 
 /**
  * Labels the inventory software has still to make for a plan: each line's cartons, less the labels it has. A label
- * voided for a reprint or a change of pieces does not count (its replacement is owed); one voided as unused does. The
+ * voided for a reprint or a change of pieces or weight does not count (its replacement is owed); one voided as unused does. The
  * database's rule (private.supplier_labels_needed).
  */
 export function labelsOwed(lines: { product_id: string; carton_type: CartonType; cartons: number }[], labels: LabelLite[]): number {
   let owed = 0;
   for (const l of lines) {
-    const have = labels.filter((c) => c.product_id === l.product_id && c.carton_type === l.carton_type && !(c.status === "void" && (c.void_reason === "reprinted" || c.void_reason === "pieces changed"))).length;
+    const have = labels.filter((c) => c.product_id === l.product_id && c.carton_type === l.carton_type && !(c.status === "void" && (c.void_reason === "reprinted" || c.void_reason === "pieces changed" || c.void_reason === "weight changed"))).length;
     owed += Math.max(0, l.cartons - have);
   }
   return owed;
@@ -320,4 +320,14 @@ export function suggestedUnits(stock: number, inTransit: number, minUnits: numbe
   const short = 2 * minUnits - stock - inTransit;
   if (short <= 0) return 0;
   return Math.ceil(short / unitsPerCarton) * unitsPerCarton;
+}
+
+/**
+ * A carton's weight for another count of pieces, worked out from a full carton's weight (kg, to 10 g): a box of 12
+ * from one of 24 at 8.5 kg is 4.25 kg. Null without a weight to start from. Only a starting point: the box itself
+ * weighs something too, so the supplier checks it on the scale.
+ */
+export function cartonWeightFor(fullWeight: number | null | undefined, fullUnits: number, pieces: number): number | null {
+  if (!fullWeight || !(fullWeight > 0) || !(fullUnits > 0) || !(pieces > 0)) return null;
+  return Math.round(((fullWeight * pieces) / fullUnits) * 100) / 100;
 }

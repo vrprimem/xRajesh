@@ -7,11 +7,18 @@ import { useToast } from "@/components/toast";
 import { Card, Chip, SectionHead, buttonClass } from "@/components/ui";
 import { labelGroups } from "@/lib/dispatch-view";
 import { formatDateTime, formatNumber, noun } from "@/lib/format";
-import { CARTON_TYPE_LABEL } from "@/lib/supplier";
+import { CARTON_TYPE_LABEL, cartonWeightFor } from "@/lib/supplier";
 import { repackCartons, reprintCarton, voidCarton } from "@/server/actions/supplier";
 import type { CartonRow, LineRow } from "@/server/supplier-data";
 
 const OPEN_UP_TO = 12;
+
+const whole = (v: string) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN);
+const kg = (v: string) => {
+  const t = v.trim().replace(",", ".");
+  return /^\d+(\.\d{1,3})?$/.test(t) ? Number(t) : NaN;
+};
+const kgText = (w: number | null) => (w ? `${formatNumber(w)} kg` : "no weight");
 
 function StatusChip({ c }: { c: CartonRow }) {
   if (c.inbound_status === "received") return <Chip tone="ok">Arrived at VRPRIME</Chip>;
@@ -22,8 +29,9 @@ function StatusChip({ c }: { c: CartonRow }) {
 
 /**
  * A dispatch's labels by product and carton type: loaded of planned, then each label (still to scan first) with its
- * downloads. While loading, the supplier can reprint, void, or change the pieces in a carton: the inventory software
- * prints the pieces on the label (and adds them to stock at VRPRIME), so a changed count gets a new label.
+ * pieces, weight and downloads. While loading, the supplier can reprint, void, or change the pieces or weight of a
+ * carton: the label shows both (and the inventory software adds the pieces to stock at VRPRIME), so a change gets a new
+ * label. The weight follows the pieces until one is typed in, because the cartons are weighed at dispatch.
  */
 export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photos }: { dispatchId: string; base: string; lines: LineRow[]; cartons: CartonRow[]; canChange: boolean; photos: Record<string, string> }) {
   const router = useRouter();
@@ -33,6 +41,10 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [pieces, setPieces] = useState("");
+  const [weight, setWeight] = useState("");
+  const [weightSet, setWeightSet] = useState(false);
+  // The carton the form started from: its weight for its pieces is what a new count is worked out from.
+  const [start, setStart] = useState<{ units: number; weight: number | null }>({ units: 0, weight: null });
   const groups = labelGroups(lines, cartons);
   const voided = cartons.filter((c) => c.status === "void").length;
 
@@ -44,9 +56,11 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
     if (later) window.setTimeout(() => router.refresh(), 6000);
   };
   const repack = (ids: string[]) => {
-    const n = /^\d+$/.test(pieces.trim()) ? Number(pieces.trim()) : NaN;
+    const n = whole(pieces);
+    const w = weight.trim() ? kg(weight) : null;
     if (!(n >= 1 && n <= 100000)) return toast.show("Enter the pieces in the carton: a whole number from 1.", "bad");
-    startTransition(async () => done(toast.result(await repackCartons(ids, n)), true));
+    if (w !== null && !(w > 0 && w <= 1000)) return toast.show("Enter the carton weight in kg, for example 8.5, or leave it empty.", "bad");
+    startTransition(async () => done(toast.result(await repackCartons(ids, n, w)), true));
   };
   const reprint = (c: CartonRow) => {
     if (!window.confirm(`Reprint label ${c.carton_no}? The old label becomes void and the inventory software makes a new one.`)) return;
@@ -56,34 +70,51 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
     if (!window.confirm(`Void label ${c.carton_no}? It can no longer be scanned.`)) return;
     startTransition(async () => done(toast.result(await voidCarton(c.id, "not used"))));
   };
-  const edit = (key: string, start: number) => {
+  const edit = (key: string, c: CartonRow) => {
     setEditing(key);
-    setPieces(String(start));
+    setPieces(String(c.units));
+    setWeight(c.weight_per_carton ? String(c.weight_per_carton) : "");
+    setWeightSet(false);
+    setStart({ units: c.units, weight: c.weight_per_carton });
+  };
+  const changePieces = (v: string) => {
+    setPieces(v);
+    if (weightSet) return;
+    const w = cartonWeightFor(start.weight, start.units, whole(v));
+    setWeight(w === null ? "" : String(w));
   };
 
-  const piecesForm = (ids: string[], many: boolean) => (
+  const form = (ids: string[], many: boolean) => (
     <form
       noValidate
-      className="flex w-full flex-col gap-2 rounded-[10px] border-2 border-frame p-3"
+      className="flex w-full flex-col gap-3 rounded-[12px] border border-frame bg-surface2 p-3"
       onSubmit={(e) => {
         e.preventDefault();
         repack(ids);
       }}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="lg-pieces" className="text-[15px] font-semibold">
-          Pieces in {many ? `each of these ${ids.length} cartons` : "this carton"}
+      <p className="text-[15px] font-semibold">{many ? `Each of these ${ids.length} cartons` : "This carton"}</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-[14px] text-muted">
+          Pieces
+          <input autoFocus className="input w-28" inputMode="numeric" value={pieces} onChange={(e) => changePieces(e.target.value.replace(/\D/g, ""))} />
         </label>
-        <input id="lg-pieces" autoFocus className="input w-28" inputMode="numeric" value={pieces} onChange={(e) => setPieces(e.target.value.replace(/\D/g, ""))} />
-        <button type="submit" disabled={pending} className={buttonClass("primary", "g-btn-row")}>
-          {pending ? "Saving..." : many ? "Make new labels" : "Make a new label"}
-        </button>
-        <button type="button" disabled={pending} onClick={() => setEditing(null)} className={buttonClass("row")}>
-          Cancel
-        </button>
+        <label className="flex flex-col gap-1 text-[14px] text-muted">
+          Weight (kg)
+          <input className="input w-32" inputMode="decimal" placeholder="e.g. 8.5" value={weight} onChange={(e) => (setWeight(e.target.value.replace(/[^\d.,]/g, "")), setWeightSet(true))} />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" disabled={pending} className={buttonClass("primary")}>
+            {pending ? "Saving..." : many ? "Make new labels" : "Make a new label"}
+          </button>
+          <button type="button" disabled={pending} onClick={() => setEditing(null)} className={buttonClass("outline")}>
+            Cancel
+          </button>
+        </div>
       </div>
       <p className="t-caption">
-        The label shows the pieces and VRPRIME&apos;s stock goes up by them when the carton is scanned in, so {many ? "each carton gets a new label" : "the carton gets a new label"} with the new count. The old {many ? "labels become" : "label becomes"} void: stick the new {many ? "ones" : "one"} on in place.
+        {!weightSet && whole(pieces) !== start.units && weight ? "The weight is worked out from the pieces: weigh the carton and correct it if it differs. " : "Weigh the carton and enter what the scale shows. "}
+        The label shows the pieces and weight, and VRPRIME&apos;s stock goes up by the pieces when the carton is scanned in, so {many ? "each carton gets a new label" : "the carton gets a new label"}. Stick it on in place of the old one, which becomes void.
       </p>
     </form>
   );
@@ -108,19 +139,23 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
           {groups.map((g) => {
             const key = `${g.product_id}:${g.carton_type}`;
             const lineUnits = lines.find((l) => l.product_id === g.product_id && l.carton_type === g.carton_type)?.units_per_carton ?? null;
-            const counts = [...new Set(g.labels.filter((c) => c.status !== "void").map((c) => c.units))].sort((a, b) => b - a);
-            const shown = showVoid ? g.labels : g.labels.filter((c) => c.status !== "void");
+            const live = g.labels.filter((c) => c.status !== "void");
+            const counts = [...new Set(live.map((c) => c.units))].sort((a, b) => b - a);
+            const weights = [...new Set(live.map((c) => c.weight_per_carton))].sort((a, b) => (b ?? 0) - (a ?? 0));
+            const shown = showVoid ? g.labels : live;
             const isOpen = open[key] ?? shown.length <= OPEN_UP_TO;
             const toScan = g.labels.filter((c) => c.status === "issued");
             const pct = g.planned ? Math.min(100, Math.round((g.loaded / g.planned) * 100)) : 0;
             return (
-              <li key={key} className="rounded-[12px] border-2 border-frame">
+              <li key={key} className="rounded-[14px] border border-frame">
                 <div className="flex flex-col gap-2 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                     <WithPhoto src={photos[g.product_id]} name={g.product} size={48}>
                       <span className="block font-semibold">{g.product}</span>
                       <span className="block text-[14px] text-muted">
-                        {CARTON_TYPE_LABEL[g.carton_type]} cartons · {counts.length > 1 ? `${counts.join(" / ")} pieces` : `${counts[0] ?? lineUnits ?? "-"} pieces each`}
+                        {CARTON_TYPE_LABEL[g.carton_type]} cartons · {counts.length > 1 ? `${counts.join(" / ")} pieces` : `${counts[0] ?? lineUnits ?? "-"} pieces`} ·{" "}
+                        {weights.length > 1 ? weights.map((w) => kgText(w)).join(" / ") : kgText(weights[0] ?? null)}
+                        {counts.length <= 1 && weights.length <= 1 ? " each" : ""}
                       </span>
                     </WithPhoto>
                     <p className="text-[17px]">
@@ -142,22 +177,24 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
                       </button>
                     ) : null}
                     {canChange && toScan.length > 1 && editing !== `all:${key}` ? (
-                      <button type="button" disabled={pending} onClick={() => edit(`all:${key}`, toScan[0].units)} className={buttonClass("row")}>
-                        Change pieces of the {formatNumber(toScan.length)} to scan
+                      <button type="button" disabled={pending} onClick={() => edit(`all:${key}`, toScan[0])} className={buttonClass("row")}>
+                        Change pieces or weight of the {formatNumber(toScan.length)} to scan
                       </button>
                     ) : null}
                   </div>
-                  {editing === `all:${key}` ? piecesForm(toScan.map((c) => c.id), true) : null}
+                  {editing === `all:${key}` ? form(toScan.map((c) => c.id), true) : null}
                 </div>
                 {isOpen && shown.length ? (
-                  <ul className="divide-y divide-line-soft border-t-2 border-frame px-3">
+                  <ul className="divide-y divide-line-soft border-t border-frame px-3">
                     {shown.map((c) => (
                       <li key={c.id} className={`flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 ${c.status === "void" ? "opacity-60" : ""}`}>
                         <span className="w-12 shrink-0 text-[17px] font-bold tabular-nums">#{c.carton_no}</span>
                         <span className="min-w-0 flex-1">
                           <span className="block font-mono text-[14px]">{c.barcode}</span>
                           <span className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="t-caption">{formatNumber(c.units)} pieces</span>
+                            <span className="t-caption">
+                              {formatNumber(c.units)} pieces · {kgText(c.weight_per_carton)}
+                            </span>
                             <StatusChip c={c} />
                           </span>
                         </span>
@@ -174,8 +211,8 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
                           ) : null}
                           {canChange && c.status === "issued" ? (
                             <>
-                              <button type="button" disabled={pending} onClick={() => edit(c.id, c.units)} className={buttonClass("row")}>
-                                Change pieces
+                              <button type="button" disabled={pending} onClick={() => edit(c.id, c)} className={buttonClass("row")}>
+                                Change pieces or weight
                               </button>
                               <button type="button" disabled={pending} onClick={() => reprint(c)} className={buttonClass("row")}>
                                 Reprint
@@ -186,7 +223,7 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
                             </>
                           ) : null}
                         </span>
-                        {editing === c.id ? piecesForm([c.id], false) : null}
+                        {editing === c.id ? form([c.id], false) : null}
                       </li>
                     ))}
                   </ul>
