@@ -1,5 +1,5 @@
 import { addDays } from "./format.ts";
-import type { ItemMove, ItemStock, ItemUnit, ReadyRow, RecipeLine } from "./supplies.ts";
+import { inStockUnits, type ItemMove, type ItemStock, type ItemUnit, type ReadyRow, type RecipeLine } from "./supplies.ts";
 
 // How much the supplier makes, and so how soon goods can be ready. Both sides see this: the supplier, and VRPRIME
 // planning what to ask for. Nothing here has a price.
@@ -59,9 +59,11 @@ export type PlanEstimate = {
 /**
  * When each open send plan can be ready. Plans are made in due order, one product at a time, at each product's pace,
  * starting today. Goods already made (ready stock) go to the earliest plans first; a plan that needs nothing made is
- * ready today. Supplies are taken by the recipes in the same order, to show what has to be bought.
+ * ready today. Supplies are taken by the recipes in the same order, to show what has to be bought (a chemical mixed
+ * with water in its own unit, by what it makes).
  */
-export function planTimeline(plans: PlanNeed[], ready: ReadyRow[], recipes: RecipeLine[], supplies: ItemStock[], today: string): PlanEstimate[] {
+export function planTimeline(plans: PlanNeed[], ready: ReadyRow[], recipeLines: RecipeLine[], supplies: ItemStock[], today: string): PlanEstimate[] {
+  const recipes = inStockUnits(recipeLines, supplies);
   const rows = new Map(ready.map((r) => [r.product_id, r]));
   const stock = new Map(ready.map((r) => [r.product_id, Math.max(0, r.ready)]));
   const left = new Map(supplies.map((s) => [s.id, s.on_hand]));

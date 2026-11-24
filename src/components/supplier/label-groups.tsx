@@ -32,8 +32,9 @@ function StatusChip({ c }: { c: CartonRow }) {
  * pieces, weight and downloads. While loading, the supplier can reprint, void, or change the pieces or weight of a
  * carton: the label shows both (and the inventory software adds the pieces to stock at VRPRIME), so a change gets a new
  * label. The weight follows the pieces until one is typed in, because the cartons are weighed at dispatch.
+ * `canPrint`: each label's download buttons (not for the warehouse person: printing is the owner's).
  */
-export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photos }: { dispatchId: string; base: string; lines: LineRow[]; cartons: CartonRow[]; canChange: boolean; photos: Record<string, string> }) {
+export function LabelGroups({ dispatchId, base, lines, cartons, canChange, canPrint = true, photos }: { dispatchId: string; base: string; lines: LineRow[]; cartons: CartonRow[]; canChange: boolean; canPrint?: boolean; photos: Record<string, string> }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -199,7 +200,7 @@ export function LabelGroups({ dispatchId, base, lines, cartons, canChange, photo
                           </span>
                         </span>
                         <span className="flex w-full flex-wrap gap-2 min-[700px]:w-auto">
-                          {c.status !== "void" ? (
+                          {canPrint && c.status !== "void" ? (
                             <>
                               <a href={`${base}/${dispatchId}/labels?carton=${c.id}`} download className={buttonClass("row")} aria-label={`Download label ${c.carton_no}, 100 by 75 millimetres`}>
                                 Download

@@ -6,6 +6,7 @@ import { Card, EmptyState, PageTitle, SectionHead } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
 import { formatNumber } from "@/lib/format";
 import { loadProductionView } from "@/server/production-view";
+import { ownerPage } from "@/server/staff-pages";
 
 export const metadata: Metadata = { title: "Production" };
 
@@ -15,6 +16,7 @@ export const metadata: Metadata = { title: "Production" };
  */
 export default async function SupplierProductionPage() {
   const user = await requirePortalUser();
+  ownerPage(user);
   const v = await loadProductionView(user.supplierId);
   if (!v.installed) return <EmptyState title="Not ready yet" body="Production is still being set up for your portal. Try again in a little while." />;
   const today = v.days.at(-1)?.units ?? 0;
@@ -22,7 +24,7 @@ export default async function SupplierProductionPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageTitle title="Production" sub={`Today ${formatNumber(today)} units · last 7 days ${formatNumber(week)}`} />
+      <PageTitle title="Production" sub={`Today ${formatNumber(today)} pcs · last 7 days ${formatNumber(week)}`} />
       <ProductionForm products={v.ready} today={v.today} />
       <Card className="g-pad">
         <SectionHead title="Made each day" sub="Units of all products, the last 14 days." />

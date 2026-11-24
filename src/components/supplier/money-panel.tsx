@@ -92,7 +92,7 @@ export function MoneyPanel({ month, data, totals, sheet, items, today }: { month
             sub={
               sheet.overheadPerUnit === null
                 ? "Supplies by the recipe, at what you paid for them on average (with GST). Enter this month's production to spread labour, hamali and the other costs over the units made."
-                : `Supplies by the recipe, at what you paid for them on average (with GST), plus this month's labour, hamali and other costs: ${formatRupees(sheet.overheadPerUnit)} for each of the ${formatNumber(sheet.unitsMade)} units made.`
+                : `Supplies by the recipe, at what you paid for them on average (with GST), plus this month's labour, hamali and other costs: ${formatRupees(sheet.overheadPerUnit)} for each of the ${formatNumber(sheet.unitsMade)} pieces made.`
             }
           />
         </div>

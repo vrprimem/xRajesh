@@ -21,8 +21,10 @@ import { StockTable } from "@/components/supplier/stock-table";
 import { StaffLogins, SupplierLogins } from "@/components/supplier/supplier-admin";
 import { SuppliesPanel } from "@/components/supplier/supplies-panel";
 import { SyncCard } from "@/components/supplier/sync-card";
+import { GodownDemo } from "./godown-demo";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { PHONE_LINKS, supplierLinks } from "@/lib/supplier-nav";
+import { isLow } from "@/lib/supplies";
 import type { DispatchDetail, DispatchSummary, PlanRow, ProduceRow, StockRow } from "@/server/supplier-data";
 import { factorySample } from "./factory-sample";
 import { BIG_DETAIL, BIG_PRODUCTS, DETAIL, DISPATCH, PRODUCTS, SUPPLIER, pid } from "./sample";
@@ -82,17 +84,37 @@ const PLANS: PlanRow[] = [
   ] },
 ];
 
-const VIEWS = ["home", "production", "supplies", "money", "more", "delivery", "newdispatch", "dispatch", "bigdispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
+const VIEWS = ["home", "godown", "production", "supplies", "money", "more", "delivery", "newdispatch", "dispatch", "bigdispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
 
-const PREVIEW_HREF: Record<string, string> = { "/supplier": "/dev/supplier", "/supplier/production": "/dev/supplier?view=production", "/supplier/dispatches": "/dev/supplier?view=dispatch", "/supplier/money": "/dev/supplier?view=money", "/supplier/supplies": "/dev/supplier?view=supplies", "/supplier/products": "/dev/supplier?view=products", "/supplier/reports": "/dev/supplier?view=vrprime", "/supplier/alerts": "/dev/supplier?view=plan" };
+const PREVIEW_HREF: Record<string, string> = {
+  "/supplier": "/dev/supplier",
+  "/supplier/godown": "/dev/supplier?view=godown",
+  "/supplier/production": "/dev/supplier?view=production",
+  "/supplier/dispatches": "/dev/supplier?view=dispatch",
+  "/supplier/scan": "/dev/supplier?view=scan",
+  "/supplier/money": "/dev/supplier?view=money",
+  "/supplier/supplies": "/dev/supplier?view=supplies",
+  "/supplier/products": "/dev/supplier?view=products",
+  "/supplier/reports": "/dev/supplier?view=vrprime",
+  "/supplier/alerts": "/dev/supplier?view=plan",
+};
+
+// What the warehouse person can open (his supplies, dispatches, scanning); any other view shows his supplies, as the
+// real pages send him there.
+const STAFF_VIEWS: readonly string[] = ["godown", "dispatch", "bigdispatch", "scan"];
 
 export default async function SupplierPreviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (process.env.NODE_ENV !== "development") notFound();
   const sp = await searchParams;
-  const view = VIEWS.find((v) => v === sp.view) ?? "home";
   const who = sp.who === "scanner" ? "scanner" : "owner";
+  const asked = VIEWS.find((v) => v === sp.view) ?? "home";
+  const view = who === "scanner" && !STAFF_VIEWS.includes(asked) ? "godown" : asked;
   const f = factorySample(PLANS.map((p) => ({ id: p.id, number: p.number, due_on: p.due_on, lines: p.lines })));
-  const navLinks = supplierLinks(who === "owner" ? "supplier_owner" : "supplier_scanner", 3).map((l) => ({ ...l, href: PREVIEW_HREF[l.href] ?? l.href }));
+  const navLinks = supplierLinks(who === "owner" ? "supplier_owner" : "supplier_scanner", 3).map((l) => ({
+    ...l,
+    pattern: undefined,
+    href: `${PREVIEW_HREF[l.href] ?? l.href}${who === "scanner" ? "&who=scanner" : ""}`,
+  }));
 
   if (view === "signin") {
     return (
@@ -104,19 +126,32 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
 
   return (
     <PortalShell
-      home="/dev/supplier"
+      home={who === "scanner" ? "/dev/supplier?view=godown&who=scanner" : "/dev/supplier"}
       title="Rajesh Industries"
-      sub="VRPRIME supplier portal · Rajesh"
+      sub={who === "scanner" ? "VRPRIME supplier portal · Mahesh (warehouse)" : "VRPRIME supplier portal · Rajesh"}
       links={navLinks}
       more="/dev/supplier?view=more"
     >
-      <nav className="mb-4 flex flex-wrap gap-2 print:hidden" aria-label="Preview">
-        {VIEWS.map((v) => (
-          <Link key={v} href={`/dev/supplier?view=${v}`} className={buttonClass(v === view ? "secondary" : "row")}>
-            {v}
+      {who === "scanner" ? (
+        // Only what Mahesh sees: his three links below. A small way back to the rest of the preview.
+        <p className="mb-3 text-[13px] text-muted print:hidden">
+          Preview as Mahesh (warehouse).{" "}
+          <Link href={`/dev/supplier?view=${view}`} className="underline underline-offset-2">
+            See it as Rajesh
           </Link>
-        ))}
-      </nav>
+        </p>
+      ) : (
+        <nav className="mb-4 flex flex-wrap gap-2 print:hidden" aria-label="Preview">
+          {VIEWS.map((v) => (
+            <Link key={v} href={`/dev/supplier?view=${v}`} className={buttonClass(v === view ? "secondary" : "row")}>
+              {v}
+            </Link>
+          ))}
+          <Link href="/dev/supplier?view=godown&who=scanner" className={buttonClass("row")}>
+            as Mahesh
+          </Link>
+        </nav>
+      )}
 
       {view === "home" ? (
         <div className="flex flex-col gap-4">
@@ -135,6 +170,8 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
         </div>
       ) : null}
 
+      {view === "godown" ? <GodownDemo view={sp.who === "vrprime" ? "vrprime" : sp.who === "scanner" ? "staff" : "owner"} /> : null}
+
       {view === "production" ? (
         <div className="flex flex-col gap-4">
           <PageTitle title="Production" sub="Today 480 units · last 7 days 6,970" />
@@ -152,8 +189,8 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
 
       {view === "supplies" ? (
         <>
-          <PageTitle title="Supplies" sub="9 in use · 2 running low" />
-          <SuppliesPanel supplierId={SUPPLIER} items={f.items} moves={f.moves} daysLeft={f.daysLeft} canEdit={who === "owner"} canCount />
+          <PageTitle title="Supplies" sub={`${f.items.filter((i) => i.active).length} in use · ${f.items.filter((i) => i.active && isLow(i)).length} running low`} />
+          <SuppliesPanel supplierId={SUPPLIER} items={f.items} moves={f.moves} daysLeft={f.daysLeft} canEdit={who === "owner"} canCount staff={who === "scanner"} startAdding={sp.add === "1"} />
         </>
       ) : null}
 
@@ -216,7 +253,7 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       ) : null}
 
       {view === "scan" ? (
-        <Scanner dispatchId={DISPATCH} number={7} backHref="/dev/supplier?view=dispatch" planned={11} cartons={DETAIL.cartons.map((c) => ({ barcode: c.barcode, carton_no: c.carton_no, product: c.product, status: c.status }))} />
+        <Scanner dispatchId={DISPATCH} number={7} backHref={`/dev/supplier?view=dispatch${who === "scanner" ? "&who=scanner" : ""}`} planned={11} cartons={DETAIL.cartons.map((c) => ({ barcode: c.barcode, carton_no: c.carton_no, product: c.product, status: c.status }))} />
       ) : null}
 
       {view === "labels" ? (
@@ -233,7 +270,16 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       {view === "products" ? (
         <>
           <PageTitle title="Products" sub="3 active" />
-          <ProductsPanel supplierId={SUPPLIER} products={PRODUCTS} canEdit={who === "owner" || sp.who === "vrprime"} demoMasters={MASTERS} photos={PHOTOS} canPhoto={sp.who === "vrprime"} />
+          <ProductsPanel
+            supplierId={SUPPLIER}
+            products={PRODUCTS}
+            canEdit={who === "owner" || sp.who === "vrprime"}
+            demoMasters={MASTERS}
+            photos={PHOTOS}
+            canPhoto={sp.who === "vrprime"}
+            ownPhotos={who === "owner" && sp.who !== "vrprime"}
+            startAdding={sp.add === "1"}
+          />
         </>
       ) : null}
 

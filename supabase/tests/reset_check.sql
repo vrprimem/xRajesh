@@ -72,7 +72,8 @@ begin
   insert into public.supplier_send_plan_lines (plan_id, product_id, carton_type, units_per_carton, cartons) values (pl, p, 'H', 24, 5);
   insert into public.supplier_produce_requests (supplier_id, product_id, stock_units, in_transit_units, min_units, suggested_units) values (s, p, 0, 0, 100, 120);
   insert into public.notifications (user_id, kind, title) values (u_raj, 'test', 'for the supplier'), (u_own, 'test', 'for the owner');
-  insert into storage.objects (bucket_id, name) values ('supplier-photos', s || '/' || d || '/rc.jpg');
+  insert into storage.objects (bucket_id, name) values ('supplier-photos', s || '/' || d || '/rc.jpg'),
+    ('supplier-photos', s || '/items/rc-item.jpg'), ('supplier-photos', s || '/products/rc-product.jpg');
   -- The supplier's own records: a supply bought and used, a vendor paid, a cost, a recipe, production and a count.
   insert into public.supplier_items (supplier_id, name, kind) values (s, 'RC Bottle', 'bottle') returning id into it;
   insert into public.supplier_vendors (supplier_id, name) values (s, 'RC Vendor') returning id into ve;
@@ -181,7 +182,8 @@ begin
   assert (select count(*) from public.supplier_thresholds where product_id = p) = 1, 'activity: minimum kept';
   assert (select count(*) from public.inventory_stock where code = 'RC-1') = 1, 'activity: stock copy kept';
   assert (r -> 'counts' ->> 'dispatches')::int = 1 and (r -> 'counts' ->> 'cartons')::int = 2 and (r -> 'counts' ->> 'send_plans')::int = 1, 'activity: counts ' || r::text;
-  assert r -> 'photos' = jsonb_build_array(s || '/' || d || '/rc.jpg'), 'the photo paths come back for the app to remove';
+  assert r -> 'photos' = jsonb_build_array(s || '/' || d || '/rc.jpg'),
+    'the activity''s photo paths come back for the app to remove; the materials'' and products'' photos stay: ' || (r -> 'photos')::text;
   assert (select count(*) from public.supplier_production) + (select count(*) from public.supplier_stock_counts) + (select count(*) from public.supplier_item_moves) = 0,
     'activity: production, counts and supply moves gone';
   assert (select count(*) from public.supplier_purchases) + (select count(*) from public.supplier_payments) + (select count(*) from public.supplier_costs) = 0,
@@ -207,6 +209,8 @@ begin
   assert (select count(*) from auth.users where id in (u_own, u_adm)) = 2, 'everything: VRPRIME sign-ins kept';
   assert (select count(*) from private.reset_authenticators where user_id = u_own and confirmed_at is not null) = 1, 'everything: the linked app stays linked';
   assert (select count(*) from public.supplier_products) = 0 and (select count(*) from public.supplier_thresholds) = 0, 'everything: products and minimums gone';
+  assert r -> 'photos' @> jsonb_build_array(s || '/items/rc-item.jpg', s || '/products/rc-product.jpg'),
+    'everything: the materials'' and products'' photos come back to remove too: ' || (r -> 'photos')::text;
   assert (select count(*) from public.master_products) = 0 and (select count(*) from public.warehouses) = 0 and (select count(*) from public.inventory_stock) = 0, 'everything: stock copy gone';
   assert (r -> 'counts' ->> 'suppliers')::int = 1 and (r -> 'counts' ->> 'supplier_logins')::int = 1 and (r -> 'counts' ->> 'products')::int = 1, 'everything: counts ' || r::text;
   assert (select count(*) from public.supplier_items) + (select count(*) from public.supplier_vendors) + (select count(*) from public.supplier_recipes) = 0,

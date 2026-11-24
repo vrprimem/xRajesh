@@ -7,6 +7,7 @@ import { requirePortalUser } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { averageRates, costSheet, monthMoney } from "@/lib/money";
 import { monthBounds, shiftMonth } from "@/lib/report";
+import { inStockUnits } from "@/lib/supplies";
 import { loadItemStock, loadMoney, loadProduction, loadReadyStock, loadRecipes, monthEnd, unitsMadeBetween } from "@/server/supplies-data";
 
 export const metadata: Metadata = { title: "Money" };
@@ -33,7 +34,8 @@ export default async function SupplierMoneyPage({ searchParams }: { searchParams
   const totals = monthMoney(money.purchases, money.payments, money.costs);
   const sheet = costSheet(
     ready.rows.map((r) => ({ id: r.product_id, name: r.name, units_per_carton: r.units_per_carton, active: r.active })),
-    recipes,
+    // A chemical mixed with water is in a recipe as litres of liquid, but bought (and priced) by the kg.
+    inStockUnits(recipes, stock.items),
     averageRates(money.priced),
     new Map(stock.items.map((i) => [i.id, i.name])),
     unitsMadeBetween(entries, `${month}-01`, monthEnd(month)),

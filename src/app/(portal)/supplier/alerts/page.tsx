@@ -4,12 +4,14 @@ import { PushSettings } from "@/components/notifications/push-settings";
 import { EmptyState, PageTitle } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { ownerPage } from "@/server/staff-pages";
 
 export const metadata: Metadata = { title: "Alerts" };
 
 /** The supplier's alerts, and the switch that sends them to this phone as notifications. */
 export default async function SupplierAlertsPage() {
   const user = await requirePortalUser();
+  ownerPage(user);
   const supabase = await createClient();
   // The database returns only this person's own notifications.
   const { data } = await supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100);

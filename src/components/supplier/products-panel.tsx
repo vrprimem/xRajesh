@@ -9,7 +9,9 @@ import { Card, Chip, EmptyState, Field, buttonClass } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 import type { MasterSku } from "@/lib/master-search";
 import { CATEGORY_LABEL, PRODUCT_CATEGORIES, parseProductsTable, parseWeight, type ProductCategory, type ProductInput } from "@/lib/supplier";
+import { uploadSupplierPhoto } from "@/lib/supplier-photo-upload";
 import { saveProducts } from "@/server/actions/supplier";
+import { setProductPhoto } from "@/server/actions/supplies";
 import type { ProductRow } from "@/server/supplier-data";
 import { MasterSkuPicker } from "./master-sku-picker";
 
@@ -19,17 +21,56 @@ const EMPTY: Form = { name: "", master: null, category: "other", units: "", capa
 /**
  * The supplier's products: search, filter by category, add or edit one, and import the whole sheet (.xlsx or .csv).
  * `canEdit` is the supplier owner and VRPRIME's owner and admin; the warehouse person only reads. The master SKU is
- * picked by searching its name (`demoMasters` is only for the dev preview, which has no database).
+ * picked by searching its name (`demoMasters` is only for the dev preview, which has no database). `canPhoto`:
+ * VRPRIME's photos of the master SKUs; `ownPhotos`: the supplier owner's own photo of each product, which shows in
+ * place of VRPRIME's. `startAdding` opens the form for a new product.
  */
-export function ProductsPanel({ supplierId, products, canEdit, demoMasters, photos = {}, canPhoto = false }: { supplierId: string; products: ProductRow[]; canEdit: boolean; demoMasters?: { code: string; name: string }[]; photos?: Record<string, string>; canPhoto?: boolean }) {
+export function ProductsPanel({
+  supplierId,
+  products,
+  canEdit,
+  demoMasters,
+  photos = {},
+  canPhoto = false,
+  ownPhotos = false,
+  startAdding = false,
+}: {
+  supplierId: string;
+  products: ProductRow[];
+  canEdit: boolean;
+  demoMasters?: { code: string; name: string }[];
+  photos?: Record<string, string>;
+  canPhoto?: boolean;
+  ownPhotos?: boolean;
+  startAdding?: boolean;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<ProductCategory | "all">("all");
-  const [form, setForm] = useState<Form | null>(null);
+  const [form, setForm] = useState<Form | null>(canEdit && startAdding ? EMPTY : null);
   const [problems, setProblems] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [photoFor, setPhotoFor] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  /** The owner's photo of a product: a small JPEG in the supplier's folder, then put on the product. */
+  const uploadOwnPhoto = async (file: File) => {
+    const product = photoFor;
+    if (!product) return;
+    setUploading(true);
+    try {
+      const path = await uploadSupplierPhoto(supplierId, "products", file);
+      if (!path) toast.show("The photo could not be uploaded. Check your connection and try again.", "bad");
+      else if (toast.result(await setProductPhoto(product, path))) router.refresh();
+    } finally {
+      setUploading(false);
+      setPhotoFor(null);
+      if (photoInput.current) photoInput.current.value = "";
+    }
+  };
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -79,6 +120,7 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
 
   return (
     <div className="flex flex-col gap-4">
+      {ownPhotos ? <input ref={photoInput} type="file" accept="image/*" className="sr-only" aria-label="Photo of the product" onChange={(e) => e.target.files?.[0] && void uploadOwnPhoto(e.target.files[0])} /> : null}
       <div className="flex flex-wrap items-center gap-2">
         <input className="input max-w-xs" type="search" placeholder="Search by name or master SKU" aria-label="Search products" value={query} onChange={(e) => setQuery(e.target.value)} />
         <select className="input w-auto" aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value as ProductCategory | "all")}>
@@ -107,6 +149,7 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
           Import sheet: an .xlsx or .csv whose first row has the headings Name and Units per carton, and optionally Master SKU, Category, Carton weight (kg) and Daily capacity. Products are matched by name: new names are added, existing ones updated, nothing is removed.
         </p>
       ) : null}
+      {ownPhotos ? <p className="t-caption -mt-2">Add a photo of each product: your team sees it wherever they read what to make or send.</p> : null}
 
       {problems.length ? (
         <Card className="g-pad">
@@ -230,9 +273,16 @@ export function ProductsPanel({ supplierId, products, canEdit, demoMasters, phot
                   ) : null}
                   {canEdit ? (
                     <td className="text-right">
-                      <button type="button" onClick={() => edit(p)} className={buttonClass("row")}>
-                        Edit
-                      </button>
+                      <span className="flex justify-end gap-2">
+                        {ownPhotos ? (
+                          <button type="button" disabled={uploading} onClick={() => (setPhotoFor(p.id), photoInput.current?.click())} className={buttonClass("row")}>
+                            {uploading && photoFor === p.id ? "Uploading..." : photos[p.id] ? "Change photo" : "Add photo"}
+                          </button>
+                        ) : null}
+                        <button type="button" onClick={() => edit(p)} className={buttonClass("row")}>
+                          Edit
+                        </button>
+                      </span>
                     </td>
                   ) : null}
                 </tr>

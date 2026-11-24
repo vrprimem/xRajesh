@@ -4,12 +4,14 @@ import { PageTitle } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PHONE_LINKS, supplierLinks } from "@/lib/supplier-nav";
+import { ownerPage } from "@/server/staff-pages";
 
 export const metadata: Metadata = { title: "More" };
 
 /** On phones the bottom bar has room for four links: this page holds the rest, as big buttons. */
 export default async function SupplierMorePage() {
   const user = await requirePortalUser();
+  ownerPage(user);
   const supabase = await createClient();
   const { count } = await supabase.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null);
   const rest = supplierLinks(user.role, count ?? 0).slice(PHONE_LINKS);

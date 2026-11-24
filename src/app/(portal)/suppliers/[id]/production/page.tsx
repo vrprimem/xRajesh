@@ -48,7 +48,7 @@ export default async function SupplierProductionView({ params }: { params: Promi
 
   return (
     <div className="flex flex-col gap-4">
-      <PageTitle title={`${supplier.name}: production`} sub={`Today ${formatNumber(v.days.at(-1)?.units ?? 0)} units · last 7 days ${formatNumber(week)} · as the supplier enters it`} action={back} />
+      <PageTitle title={`${supplier.name}: production`} sub={`Today ${formatNumber(v.days.at(-1)?.units ?? 0)} pcs · last 7 days ${formatNumber(week)} · as the supplier enters it`} action={back} />
       <Card className="g-pad">
         <SectionHead title="Made each day" sub="Units of all products, the last 14 days." />
         <OutputChart days={v.days} today={v.today} title={`Units ${supplier.name} made each day, the last 14 days`} />

@@ -47,6 +47,8 @@ declare
   i_trig uuid;
   i_chem uuid;
   i_box uuid;
+  i_stk uuid;
+  litres numeric;
   v_a uuid;
   v_b uuid;
   pu uuid;
@@ -55,6 +57,7 @@ declare
   num numeric;
   ph1 text;
   ph2 text;
+  gp text;
   stored boolean;
   d_r uuid;
   d_w uuid;
@@ -364,6 +367,28 @@ begin
   assert (select count(*) from public.supplier_scan_events where dispatch_id = d_a and kind = 'load') = 1, 'one load event';
   assert (select count(*) from public.supplier_scan_events where dispatch_id = d_a and kind = 'refused') = 2, 'refused scans are logged';
 
+  -- Printing, voiding and closing are the owner's: the warehouse person only scans (and adds the vehicle photo).
+  blocked := false;
+  begin
+    perform public.supplier_carton_reprint(c2.id);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot reprint a label';
+  blocked := false;
+  begin
+    perform public.supplier_carton_void(c2.id, 'not needed');
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nor void one';
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_void_unused(d_a);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nor void the unused labels';
+  assert not exists (select 1 from public.supplier_cartons where dispatch_id = d_a and status = 'void'), 'nothing was voided';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+
   -- Closing is refused until everything is accounted for and the photo is there.
   blocked := false;
   begin
@@ -417,8 +442,16 @@ begin
   assert not private.can_see_supplier_path(s_b::text || '/x/y.jpg'), 'and not another supplier''s';
   assert not private.can_see_supplier_path('not-a-uuid/x.jpg'), 'a path that is not a supplier folder is refused';
 
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_close(d_a);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot close the dispatch, even when it is ready';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
   perform public.supplier_dispatch_close(d_a);
-  assert (select status from public.supplier_dispatches where id = d_a) = 'closed', 'the dispatch is closed';
+  assert (select status from public.supplier_dispatches where id = d_a) = 'closed', 'the owner closes it';
   res := public.supplier_scan(d_a, jsonb_build_array(jsonb_build_object('barcode', c1.barcode, 'at', now())));
   assert res->0->>'result' = 'closed', 'a closed dispatch takes no more scans';
   blocked := false;
@@ -683,7 +716,8 @@ begin
   exception when insufficient_privilege then blocked := true;
   end;
   assert blocked, 'a supplier cannot add supplies to another supplier';
-  i_bottle := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Bottle 500ml', 'kind', 'bottle', 'unit', 'pcs', 'low_level', 100));
+  i_bottle := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Bottle 500ml', 'kind', 'bottle', 'unit', 'pcs', 'low_level', 100,
+                                                                'simple_name', '500ml Bottle', 'simple_name_hi', '500ml बोतल'));
   i_trig := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Trigger', 'kind', 'trigger'));
   i_chem := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Kitchen chemical', 'kind', 'chemical', 'unit', 'litre'));
   i_box := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Hard carton', 'kind', 'carton_hard'));
@@ -738,17 +772,124 @@ begin
   select count(*) into n from public.supplier_vendor_balances(s_a);
   assert n = 2, 'both vendors are listed';
 
+  -- Purchases are money only: goods come into stock when the godown enters them (goods in), the warehouse person too.
   select on_hand into num from public.supplier_item_stock(s_a) where id = i_bottle;
-  assert num = 1000, 'received bottles are in stock';
+  assert num = 0, 'a purchase alone puts nothing in stock';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  num := public.supplier_item_receive(i_bottle, 1000);
+  assert num = 1000, 'goods in: the bottles are in stock';
+  perform public.supplier_item_receive(i_chem, 200);
+  perform public.supplier_item_receive(i_box, 100);
   select on_hand into num from public.supplier_item_stock(s_a) where id = i_trig;
-  assert num = 0, 'triggers not received yet are not in stock';
-  -- They arrive: the purchase is changed, and the stock follows it.
+  assert num = 0, 'triggers not in yet are not in stock';
+  gp := s_a::text || '/goods-in/' || gen_random_uuid()::text || '.jpg';
+  num := public.supplier_item_receive(i_trig, 1000, gp);
+  assert num = 1000, 'triggers are in stock once they come in';
+  assert (select count(*) = 1 and bool_and(reason = 'received' and created_by = u_scan and photo_path = gp) from public.supplier_item_moves where item_id = i_trig),
+    'goods in is one move, by the warehouse person, with the bill photo';
+  blocked := false;
+  begin
+    perform public.supplier_item_receive(i_trig, 0);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'goods in needs a quantity above 0';
+  blocked := false;
+  begin
+    perform public.supplier_item_receive(i_trig, 5, s_b::text || '/goods-in/' || gen_random_uuid()::text || '.jpg');
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a bill photo must be in the supplier''s own folder';
+  -- Marking a purchase received leaves the stock alone.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
   perform public.supplier_purchase_save(s_a, (select jsonb_build_object('id', id, 'vendor_id', vendor_id, 'item_id', item_id, 'bought_on', bought_on, 'qty', qty, 'rate', rate, 'received_on', current_date)
                                               from public.supplier_purchases where item_id = i_trig));
   select on_hand into num from public.supplier_item_stock(s_a) where id = i_trig;
-  assert num = 1000, 'triggers are in stock once received';
-  select count(*) into n from public.supplier_item_moves where item_id = i_trig;
-  assert n = 1, 'a changed purchase keeps one stock move';
+  assert num = 1000, 'a purchase marked received does not add the goods again';
+  assert not exists (select 1 from public.supplier_item_moves where purchase_id is not null), 'purchases make no stock moves';
+
+  -- How much a box holds (said at the godown, supplier_item_set_box; the owner's supplies form leaves it alone), a
+  -- material's photo, and what the godown shows was entered today.
+  perform public.supplier_item_set_box(i_chem, 1.5);
+  assert (select box_qty = 1.5 from public.supplier_items where id = i_chem), 'a box of the chemical holds 1.5';
+  perform public.supplier_item_set_box(i_trig, 1000);
+  assert (select box_qty = 1000 from public.supplier_items where id = i_trig), 'triggers come in boxes of 1,000';
+  perform public.supplier_item_save(s_a, jsonb_build_object('id', i_trig, 'name', 'SP Trigger', 'kind', 'trigger', 'box_qty', 5));
+  assert (select box_qty = 1000 from public.supplier_items where id = i_trig), 'the supplies form does not change the box';
+  perform public.supplier_item_set_box(i_chem, null);
+  assert (select box_qty is null from public.supplier_items where id = i_chem), 'no box: counted one by one';
+  -- What the godown staff call a material, in English, Hindi and Marathi: each kept when left out, cleared when empty.
+  assert (select simple_name = '500ml Bottle' and simple_name_hi = '500ml बोतल' and simple_name_mr is null from public.supplier_items where id = i_bottle),
+    'a new material gets its simple names';
+  perform public.supplier_item_save(s_a, jsonb_build_object('id', i_trig, 'name', 'SP Trigger', 'kind', 'trigger',
+                                                            'simple_name', ' Trigger 500ml ', 'simple_name_hi', '500ml ट्रिगर', 'simple_name_mr', '500ml ट्रिगर'));
+  assert (select simple_name = 'Trigger 500ml' and simple_name_hi = '500ml ट्रिगर' and simple_name_mr = '500ml ट्रिगर' from public.supplier_items where id = i_trig),
+    'a material''s simple names are saved, trimmed';
+  perform public.supplier_item_save(s_a, jsonb_build_object('id', i_trig, 'name', 'SP Trigger', 'kind', 'trigger', 'simple_name_mr', ''));
+  assert (select simple_name = 'Trigger 500ml' and simple_name_hi = '500ml ट्रिगर' and simple_name_mr is null and box_qty = 1000 from public.supplier_items where id = i_trig),
+    'each simple name is kept when left out, and cleared when empty';
+  blocked := false;
+  begin
+    perform public.supplier_item_save(s_a, jsonb_build_object('id', i_trig, 'name', 'SP Trigger', 'kind', 'trigger', 'simple_name_hi', repeat('ट', 121)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a simple name is at most 120 letters';
+  gp := s_a::text || '/items/' || gen_random_uuid()::text || '.jpg';
+  t := public.supplier_item_set_photo(i_trig, gp);
+  assert t is null and (select photo_path from public.supplier_items where id = i_trig) = gp, 'a material gets its photo';
+  t := public.supplier_item_set_photo(i_trig, null);
+  assert t = gp, 'taking it off hands back the old file to remove';
+  blocked := false;
+  begin
+    perform public.supplier_item_set_photo(i_trig, s_a::text || '/elsewhere/' || gen_random_uuid()::text || '.jpg');
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a material photo must be in the materials folder';
+  gp := s_a::text || '/products/' || gen_random_uuid()::text || '.jpg';
+  t := public.supplier_product_set_photo(p_a, gp);
+  assert t is null and (select photo_path from public.supplier_products where id = p_a) = gp, 'a product gets the supplier''s own photo';
+  t := public.supplier_product_set_photo(p_a, null);
+  assert t = gp and (select photo_path from public.supplier_products where id = p_a) is null, 'taking a product''s photo off hands back the old file to remove';
+  blocked := false;
+  begin
+    perform public.supplier_product_set_photo(p_a, s_a::text || '/items/' || gen_random_uuid()::text || '.jpg');
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a product photo must be in the products folder';
+  select count(*) into n from public.supplier_godown_events(s_a) where kind = 'in' and who = 'SP Scanner';
+  assert n = 4, 'the godown shows today''s goods in, with who entered them';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_item_set_photo(i_trig, null);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person does not change materials';
+  blocked := false;
+  begin
+    perform public.supplier_product_set_photo(p_a, null);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person does not change product photos';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_item_receive(i_trig, 1);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot enter goods in here';
+  blocked := false;
+  begin
+    perform public.supplier_product_set_photo(p_a, null);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot change this supplier''s product photos';
+  blocked := false;
+  begin
+    perform public.supplier_godown_events(s_a);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nor read this godown';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
 
   -- The warehouse person: supplies and their stock, no money.
   perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
@@ -848,7 +989,8 @@ begin
   assert num = 1000, 'a removed entry gives its supplies back';
   blocked := false;
   begin
-    perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date + 1, 'units', 10));
+    -- Tomorrow in India, where the production day is counted (the database's own date can still be yesterday there).
+    perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', (now() at time zone 'Asia/Kolkata')::date + 1, 'units', 10));
   exception when invalid_parameter_value then blocked := true;
   end;
   assert blocked, 'production cannot be entered for tomorrow';
@@ -910,6 +1052,74 @@ begin
   exception when insufficient_privilege then blocked := true;
   end;
   assert blocked, 'another supplier cannot enter this production';
+
+  -- A chemical that makes liquid with water (half a litre of it makes 6 L here): recipes take it as litres of liquid,
+  -- and production takes the chemical off by what it makes. The owner or VRPRIME says what it makes.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  perform public.supplier_item_save(s_a, jsonb_build_object('id', i_chem, 'name', 'SP Kitchen chemical', 'kind', 'chemical', 'unit', 'litre',
+                                                            'mix_qty', 0.5, 'mix_litres', 6));
+  assert (select mix_qty = 0.5 and mix_litres = 6 from public.supplier_items where id = i_chem), 'half a litre of the chemical makes 6 L of liquid';
+  perform public.supplier_item_save(s_a, jsonb_build_object('id', i_chem, 'name', 'SP Kitchen chemical', 'kind', 'chemical', 'unit', 'litre'));
+  assert (select mix_litres = 6 from public.supplier_items where id = i_chem), 'saving without it keeps what it makes';
+  blocked := false;
+  begin
+    perform public.supplier_item_save(s_a, jsonb_build_object('id', i_chem, 'name', 'SP Kitchen chemical', 'kind', 'chemical', 'unit', 'litre', 'mix_qty', 1));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'what it makes needs both: how much makes how many litres';
+
+  -- Boxes packed are the cartons used, whatever they held: 5 boxes of 12 use 5 cartons, not 60 over the 20 a carton.
+  -- And the recipe''s 0.5 L of liquid a unit is 30 L for 60 units: 2.5 L of the chemical, at half a litre to 6 L.
+  select on_hand into num from public.supplier_item_stock(s_a) where id = i_box;
+  select on_hand into litres from public.supplier_item_stock(s_a) where id = i_chem;
+  pr1 := public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date, 'units', 60, 'cartons', 5));
+  assert (select on_hand from public.supplier_item_stock(s_a) where id = i_box) = num - 5, 'boxes packed are the cartons used';
+  assert (select on_hand from public.supplier_item_stock(s_a) where id = i_chem) = litres - 2.5, 'the chemical comes off by what it makes';
+  perform public.supplier_production_delete(pr1);
+  assert (select on_hand from public.supplier_item_stock(s_a) where id = i_box) = num, 'and come back with the entry';
+  blocked := false;
+  begin
+    perform public.supplier_production_save(jsonb_build_object('product_id', p_a, 'made_on', current_date, 'units', 4, 'cartons', 5));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'no more boxes than units';
+
+  -- Stickers are weighed as well as counted: goods in and counts keep the kg. The warehouse person says how much a box
+  -- holds.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  i_stk := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Sticker', 'kind', 'label'));
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  num := public.supplier_item_receive(i_stk, 5000, null, 12.5);
+  assert num = 5000 and (select weight_kg = 12.5 from public.supplier_item_moves where item_id = i_stk and reason = 'received'),
+    'goods in keeps what the stickers weighed';
+  num := public.supplier_item_count(i_stk, 4800, null, 12);
+  assert num = -200 and (select weight_kg = 12 from public.supplier_item_moves where item_id = i_stk and reason = 'count'),
+    'a count keeps what it weighed';
+  assert (select kg = 12.5 from public.supplier_godown_events(s_a) where kind = 'in' and item_id = i_stk), 'the godown shows the weight';
+  blocked := false;
+  begin
+    perform public.supplier_item_receive(i_stk, 10, null, 0);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a weight is above 0';
+  perform public.supplier_item_set_box(i_trig, 750);
+  assert (select box_qty = 750 from public.supplier_items where id = i_trig), 'the warehouse person says how much a box holds';
+  perform public.supplier_item_set_box(i_trig, null);
+  assert (select box_qty is null from public.supplier_items where id = i_trig), 'and can clear it';
+  blocked := false;
+  begin
+    perform public.supplier_item_set_box(i_trig, 0);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a box holds more than nothing';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_item_set_box(i_trig, 5);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot set a box here';
   reset role;
 
   -- =====================================================================================
@@ -1017,9 +1227,17 @@ begin
   perform public.supplier_labels_done(d_r, null);
   select array_agg(id order by carton_no) into ids from public.supplier_cartons where dispatch_id = d_r;
 
-  -- The warehouse person changes the third carton to 12 pieces.
+  -- Changing a label's pieces voids it for a new one: the owner's, not the warehouse person's. The owner changes the
+  -- third carton to 12 pieces.
   perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
   set local role authenticated;
+  blocked := false;
+  begin
+    perform public.supplier_cartons_repack(array[ids[3]], 12);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot change a label''s pieces';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
   n := public.supplier_cartons_repack(array[ids[3]], 12); -- pieces alone, as the app called it before weights
   assert n = 1, 'one label changed';
   assert (select status = 'void' and void_reason = 'pieces changed' from public.supplier_cartons where id = ids[3]), 'its old label is void';

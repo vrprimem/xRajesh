@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { averageRates, costSheet, monthMoney, purchaseAmount } from "./money.ts";
-import { cartonsAndUnits, formatQty, formatRupees, isLow, readNumber } from "./supplies.ts";
+import { boxesAndPieces, formatBoxes, formatQty, formatRupees, inStockUnits, isLow, perLitre, readNumber } from "./supplies.ts";
 
 test("a purchase is quantity x rate plus GST, to the paisa, as the database works it out", () => {
   assert.equal(purchaseAmount(1000, 4.5, 18), 5310);
@@ -102,12 +102,33 @@ test("supply quantities, rupees, low stock, cartons and typed numbers read as pe
   assert.ok(isLow({ low_level: 100, on_hand: 100 }));
   assert.ok(!isLow({ low_level: 100, on_hand: 101 }));
   assert.ok(!isLow({ low_level: null, on_hand: 0 }));
-  assert.equal(cartonsAndUnits(244, 20), "12 cartons + 4");
-  assert.equal(cartonsAndUnits(20, 20), "1 carton");
-  assert.equal(cartonsAndUnits(18, 20), "18 units");
+  assert.equal(boxesAndPieces(244, 20), "12 boxes + 4 pcs");
+  assert.equal(boxesAndPieces(20, 20), "1 box");
+  assert.equal(boxesAndPieces(18, 20), "18 pcs");
+  assert.equal(formatBoxes(2400, "pcs", 1000), "2 boxes + 400 pcs");
+  assert.equal(formatBoxes(3, "kg", 1.5), "2 boxes");
+  assert.equal(formatBoxes(1.2, "kg", 1.5), "1.2 kg", "under one box: in its unit");
+  assert.equal(formatBoxes(640, "pcs", null), "640 pcs");
   assert.equal(readNumber(" 1,200 "), 1200);
   assert.equal(readNumber("₹4.50"), 4.5);
   assert.equal(readNumber("-3"), null);
   assert.equal(readNumber("12abc"), null);
   assert.equal(readNumber(""), null);
+});
+
+test("a chemical in a recipe is litres of liquid; in stock, kg by what it makes", () => {
+  const items = [
+    { id: "rep", mix_qty: 1.5, mix_litres: 160 },
+    { id: "bottle", mix_qty: null, mix_litres: null },
+  ];
+  const recipes = [
+    { product_id: "p", item_id: "rep", qty: 0.25, per: "unit" as const },
+    { product_id: "p", item_id: "bottle", qty: 1, per: "unit" as const },
+  ];
+  const kg = inStockUnits(recipes, items);
+  assert.ok(Math.abs(kg[0].qty - 0.00234375) < 1e-12, "0.25 L of a 1.5 kg to 160 L chemical");
+  assert.equal(kg[1].qty, 1, "other supplies as they are");
+  assert.equal(recipes[0].qty, 0.25, "the recipe itself is not changed");
+  assert.equal(perLitre({ mix_qty: 1, mix_litres: 12 }), 1 / 12);
+  assert.equal(perLitre({ mix_qty: null, mix_litres: 12 }), null);
 });

@@ -36,7 +36,7 @@ export function DeliveryPlans({ estimates, today, empty }: { estimates: PlanEsti
               <ul className="mt-2 flex flex-col gap-1 text-[15px]">
                 {e.lines.map((l) => (
                   <li key={l.product_id}>
-                    <b>{l.product}</b>: {formatNumber(l.units)} units
+                    <b>{l.product}</b>: {formatNumber(l.units)} pcs
                     <span className="text-muted">
                       {l.fromStock ? ` · ${formatNumber(l.fromStock)} ready` : ""}
                       {l.toMake ? ` · ${formatNumber(l.toMake)} to make${l.days !== null ? `, ${daysText(l.days)}` : ""}` : ""}

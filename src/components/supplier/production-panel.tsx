@@ -6,7 +6,7 @@ import { useToast } from "@/components/toast";
 import { Card, Chip, EmptyState, Field, SectionHead, buttonClass } from "@/components/ui";
 import { addDays, formatDate, formatNumber } from "@/lib/format";
 import { paceOf } from "@/lib/production";
-import { cartonsAndUnits, formatQty, readNumber, UNIT_SHORT, type ItemStock, type ProductionEntry, type ReadyRow, type RecipeLine, type RecipePer } from "@/lib/supplies";
+import { boxesAndPieces, formatQty, perLitre, readNumber, UNIT_SHORT, type ItemStock, type ProductionEntry, type ReadyRow, type RecipeLine, type RecipePer } from "@/lib/supplies";
 import { countReady, removeProduction, saveProduction, saveRecipe } from "@/server/actions/supplies";
 
 type Product = Pick<ReadyRow, "product_id" | "name" | "units_per_carton" | "active">;
@@ -17,7 +17,7 @@ const whole = (text: string): number | null => {
   return n !== null && Number.isInteger(n) ? n : null;
 };
 
-/** Enter what was made: the product, full cartons and loose units, and the day (today unless changed). */
+/** Enter what was made: the product, full boxes and loose pieces, and the day (today unless changed). */
 export function ProductionForm({ products, today }: { products: Product[]; today: string }) {
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -38,14 +38,15 @@ export function ProductionForm({ products, today }: { products: Product[]; today
   const submit = () => {
     const e: Record<string, string> = {};
     if (!product) e.product = "Choose the product";
-    if (c === null) e.cartons = "Whole cartons only";
-    if (l === null) e.loose = "Whole units only";
-    if (c !== null && l !== null && !(units && units > 0)) e.cartons = "Enter the cartons, the loose units or both";
+    if (c === null) e.cartons = "Whole boxes only";
+    if (l === null) e.loose = "Whole pieces only";
+    if (c !== null && l !== null && !(units && units > 0)) e.cartons = "Enter the boxes, the loose pieces or both";
     if (!day || day > today) e.day = "Today or a day before";
     setErrors(e);
     if (Object.keys(e).length || !units) return;
     startTransition(async () => {
-      const result = await saveProduction({ product_id: productId, made_on: day, units, note });
+      // The full boxes are the cartons used; the loose pieces are not in one yet.
+      const result = await saveProduction({ product_id: productId, made_on: day, units, cartons: c ?? 0, note });
       if (toast.result(result)) {
         setCartons("");
         setLoose("");
@@ -78,10 +79,10 @@ export function ProductionForm({ products, today }: { products: Product[]; today
           <Field label="Day made" htmlFor="pr-day" required error={errors.day}>
             <input id="pr-day" className="input" type="date" max={today} min={addDays(today, -60)} value={day} onChange={(e) => setDay(e.target.value)} />
           </Field>
-          <Field label="Full cartons" htmlFor="pr-cartons" error={errors.cartons} hint={product ? `1 carton = ${formatNumber(product.units_per_carton)} units` : undefined}>
+          <Field label="Boxes" htmlFor="pr-cartons" error={errors.cartons} hint={product ? `1 box = ${formatNumber(product.units_per_carton)} pcs` : undefined}>
             <input id="pr-cartons" className="input" inputMode="numeric" placeholder="0" value={cartons} onChange={(e) => setCartons(e.target.value)} />
           </Field>
-          <Field label="Loose units" htmlFor="pr-loose" error={errors.loose} hint="Made but not in a full carton yet.">
+          <Field label="Loose pieces" htmlFor="pr-loose" error={errors.loose} hint="Made but not in a full box yet.">
             <input id="pr-loose" className="input" inputMode="numeric" placeholder="0" value={loose} onChange={(e) => setLoose(e.target.value)} />
           </Field>
         </div>
@@ -89,7 +90,7 @@ export function ProductionForm({ products, today }: { products: Product[]; today
           <input id="pr-note" className="input" maxLength={300} placeholder="e.g. night shift" value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
         <p className="text-[17px]">
-          Total: <b className="tabular-nums">{units ? formatNumber(units) : 0}</b> units
+          Total: <b className="tabular-nums">{units ? formatNumber(units) : 0}</b> pcs{product && units ? ` (${boxesAndPieces(units, product.units_per_carton)})` : ""}
         </p>
         <FormButtons pending={pending} save="Save production" />
       </form>
@@ -118,7 +119,7 @@ export function ProductionLog({ entries, products, today, days = 14, canRemove }
             <section key={day}>
               <h3 className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-frame pb-1.5 text-[17px] font-bold">
                 <span>{day === today ? "Today" : formatDate(day)}</span>
-                <span className="tabular-nums">{formatNumber(rows.reduce((s, r) => s + r.units, 0))} units</span>
+                <span className="tabular-nums">{formatNumber(rows.reduce((s, r) => s + r.units, 0))} pcs</span>
               </h3>
               <ul className="divide-y divide-line-soft">
                 {rows.map((r) => {
@@ -128,7 +129,8 @@ export function ProductionLog({ entries, products, today, days = 14, canRemove }
                       <div className="min-w-0">
                         <p className="font-semibold">{p?.name ?? "Unknown product"}</p>
                         <p className="t-caption">
-                          {formatNumber(r.units)} units{p ? ` · ${cartonsAndUnits(r.units, p.units_per_carton)}` : ""}
+                          {p ? boxesAndPieces(r.units, p.units_per_carton) : `${formatNumber(r.units)} pcs`}
+                          {p && r.units >= p.units_per_carton ? ` · ${formatNumber(r.units)} pcs` : ""}
                           {r.note ? ` · ${r.note}` : ""}
                         </p>
                       </div>
@@ -156,17 +158,21 @@ export function ReadyStockTable({ rows, canCount }: { rows: ReadyRow[]; canCount
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [counting, setCounting] = useState<string | null>(null);
+  const [countedBoxes, setCountedBoxes] = useState("");
   const [counted, setCounted] = useState("");
   const [error, setError] = useState("");
   const shown = rows.filter((r) => r.active || r.ready !== 0 || r.made_30d > 0);
 
-  const save = (productId: string) => {
-    const n = whole(counted);
-    if (n === null || !counted.trim()) return setError("Enter the units you counted");
+  /** A count in full boxes and loose pieces: the ready stock becomes what was counted. */
+  const save = (row: ReadyRow) => {
+    const boxes = whole(countedBoxes);
+    const loose = whole(counted);
+    if (boxes === null || loose === null || (!countedBoxes.trim() && !counted.trim())) return setError("Enter the full boxes and the loose pieces you counted");
     startTransition(async () => {
-      const result = await countReady(productId, n, "");
+      const result = await countReady(row.product_id, boxes * row.units_per_carton + loose, "");
       if (toast.result(result)) {
         setCounting(null);
+        setCountedBoxes("");
         setCounted("");
       }
     });
@@ -195,12 +201,12 @@ export function ReadyStockTable({ rows, canCount }: { rows: ReadyRow[]; canCount
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[18px] font-bold tabular-nums">{formatNumber(r.ready)} ready</p>
-                  {r.ready > 0 ? <p className="t-caption tabular-nums">{cartonsAndUnits(r.ready, r.units_per_carton)}</p> : null}
+                  <p className="text-[18px] font-bold tabular-nums">{r.ready > 0 ? boxesAndPieces(r.ready, r.units_per_carton) : `${formatNumber(r.ready)} pcs`} ready</p>
+                  {r.ready >= r.units_per_carton && r.units_per_carton > 0 ? <p className="t-caption tabular-nums">{formatNumber(r.ready)} pcs in all</p> : null}
                 </div>
                 {canCount && counting !== r.product_id ? (
                   <div className="flex w-full justify-end min-[700px]:w-auto">
-                    <button type="button" onClick={() => (setCounting(r.product_id), setCounted(""), setError(""))} className={buttonClass("row")}>
+                    <button type="button" onClick={() => (setCounting(r.product_id), setCountedBoxes(""), setCounted(""), setError(""))} className={buttonClass("row")}>
                       Count
                     </button>
                   </div>
@@ -211,13 +217,18 @@ export function ReadyStockTable({ rows, canCount }: { rows: ReadyRow[]; canCount
                     className="flex w-full flex-wrap items-center justify-end gap-2"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      save(r.product_id);
+                      save(r);
                     }}
                   >
-                    <label className="text-[15px] font-semibold" htmlFor={`rc-${r.product_id}`}>
-                      Units counted
-                    </label>
-                    <input id={`rc-${r.product_id}`} autoFocus className="input w-32" inputMode="numeric" value={counted} onChange={(e) => (setCounted(e.target.value), setError(""))} />
+                    <span className="text-[15px] font-semibold">Counted</span>
+                    <div className="relative">
+                      <input id={`rcb-${r.product_id}`} aria-label="Full boxes" autoFocus className="input w-28 pr-14" inputMode="numeric" value={countedBoxes} onChange={(e) => (setCountedBoxes(e.target.value), setError(""))} />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-muted">boxes</span>
+                    </div>
+                    <div className="relative">
+                      <input id={`rc-${r.product_id}`} aria-label="Loose pieces" className="input w-28 pr-11" inputMode="numeric" placeholder="loose" value={counted} onChange={(e) => (setCounted(e.target.value), setError(""))} />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-muted">pcs</span>
+                    </div>
                     <button type="submit" disabled={pending} className={buttonClass("primary", "g-btn-row")}>
                       Save
                     </button>
@@ -238,7 +249,7 @@ export function ReadyStockTable({ rows, canCount }: { rows: ReadyRow[]; canCount
 
 type Line = { item_id: string; qty: string; per: RecipePer };
 
-/** What each product uses, per unit or per carton. Production takes these off the supplies' stock. */
+/** What each product uses, per piece or per box. Production takes these off the supplies' stock. */
 export function RecipeEditor({ products, items, recipes, canEdit }: { products: Product[]; items: ItemStock[]; recipes: RecipeLine[]; canEdit: boolean }) {
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -266,7 +277,10 @@ export function RecipeEditor({ products, items, recipes, canEdit }: { products: 
 
   return (
     <Card className="g-pad">
-      <SectionHead title="Recipes" sub="What one unit uses (a bottle, a trigger, litres of chemical) and what one carton uses (the carton, tape)." />
+      <SectionHead
+        title="Recipes"
+        sub="What one piece uses (a bottle, a trigger, a sticker; a chemical mixed with water as the litres of liquid it holds) and what one box uses (the carton, tape)."
+      />
       {!items.length ? (
         <p className="t-caption">Add your supplies first (bottles, triggers, chemicals, cartons) on the Supplies page; then say here what each product uses.</p>
       ) : (
@@ -283,7 +297,9 @@ export function RecipeEditor({ products, items, recipes, canEdit }: { products: 
                         ? recipe
                             .map((r) => {
                               const it = itemById.get(r.item_id);
-                              return `${it ? formatQty(r.qty, it.unit) : r.qty} ${it?.name ?? "supply"}${r.per === "carton" ? " per carton" : ""}`;
+                              // A chemical mixed with water: the litres of liquid ("0.25 L liquid of REPELLENT CHEMICAL").
+                              const qty = it && perLitre(it) ? `${formatQty(r.qty, "litre")} liquid of` : it ? formatQty(r.qty, it.unit) : r.qty;
+                              return `${qty} ${it?.name ?? "supply"}${r.per === "carton" ? " per box" : ""}`;
                             })
                             .join(" · ")
                         : "No recipe yet: production of it takes no supplies off stock."}
@@ -305,7 +321,10 @@ export function RecipeEditor({ products, items, recipes, canEdit }: { products: 
                     }}
                   >
                     {lines.map((l, i) => {
-                      const unit = itemById.get(l.item_id)?.unit;
+                      const it = itemById.get(l.item_id);
+                      // A chemical mixed with water goes in as the litres of liquid; production takes the chemical off by what it makes.
+                      const mixed = it && perLitre(it) ? it : null;
+                      const unit = mixed ? "litre" : it?.unit;
                       return (
                         <div key={i} className="grid grid-cols-[1fr_auto] gap-2 min-[700px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]">
                           <select aria-label="Supply" className="input col-span-2 min-[700px]:col-span-1" value={l.item_id} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, item_id: e.target.value } : x)))}>
@@ -320,12 +339,17 @@ export function RecipeEditor({ products, items, recipes, canEdit }: { products: 
                             {unit ? <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-muted">{UNIT_SHORT[unit]}</span> : null}
                           </div>
                           <select aria-label="Per" className="input" value={l.per} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, per: e.target.value as RecipePer } : x)))}>
-                            <option value="unit">per unit</option>
-                            <option value="carton">per carton of {p.units_per_carton}</option>
+                            <option value="unit">per piece</option>
+                            <option value="carton">per box of {p.units_per_carton}</option>
                           </select>
                           <button type="button" onClick={() => setLines(lines.filter((_, j) => j !== i))} className={buttonClass("row")} aria-label={`Take ${itemById.get(l.item_id)?.name ?? "this supply"} out`}>
                             Remove
                           </button>
+                          {mixed?.mix_qty && mixed.mix_litres ? (
+                            <p className="t-caption col-span-full -mt-1">
+                              Litres of liquid. {formatQty(mixed.mix_qty, mixed.unit)} makes {formatQty(mixed.mix_litres, "litre")}, so what is made takes the chemical off by that.
+                            </p>
+                          ) : null}
                         </div>
                       );
                     })}

@@ -17,7 +17,8 @@ export default async function SupplierProductsPage({ params }: { params: Promise
   if (!UUID.test(id)) notFound();
   const supplier = await loadSupplier(id);
   if (!supplier) notFound();
-  const [products, photos] = await Promise.all([loadProducts(id), loadProductPhotos(id)]);
+  // VRPRIME sets the photos of the master SKUs here: those alone, not the supplier's own.
+  const [products, photos] = await Promise.all([loadProducts(id), loadProductPhotos(id, { masterOnly: true })]);
   return (
     <>
       <PageTitle

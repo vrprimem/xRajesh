@@ -72,7 +72,8 @@ export type CostSheet = {
  * What a unit of each product costs to make. Supplies: the product's recipe (per unit, or per carton shared by the units
  * in it) at each supply's average price; a supply never bought here has no price yet, and the figure is then a
  * minimum (`complete` false). Labour, hamali and the other costs of the period: shared equally by every unit
- * made in it, of every product. Products are those given (the active ones) plus any made in the period.
+ * made in it, of every product. Products are those given (the active ones) plus any made in the period. The recipes
+ * are in the supplies' own units, as their prices are (a chemical mixed with water in kg: see `inStockUnits`).
  */
 export function costSheet(
   products: { id: string; name: string; units_per_carton: number; active: boolean }[],

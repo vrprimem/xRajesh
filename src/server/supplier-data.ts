@@ -297,9 +297,35 @@ export async function loadDispatch(id: string): Promise<DispatchDetail | null> {
  * The photos of a supplier's products (each by its VRPRIME master SKU): product id -> the picture's address. Products
  * without a photo are left out. Empty before the photos migration is applied.
  */
-export async function loadProductPhotos(supplierId: string): Promise<Record<string, string>> {
+/** Links (good for an hour) to these files of the private supplier-photos bucket, by path. */
+export async function signedPhotos(paths: (string | null | undefined)[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(paths.filter((p): p is string => Boolean(p)))];
+  const signed = new Map<string, string>();
+  if (!wanted.length) return signed;
   const db = await supplierDb();
-  const { data, error } = await db.rpc("supplier_product_photos", { p_supplier: supplierId });
-  const rows = soft("product photos", error, data as { product_id: string; path: string }[] | null, []);
-  return Object.fromEntries(rows.filter((r) => PHOTO_FILE.test(r.path)).map((r) => [r.product_id, photoSrc(r.path)]));
+  const { data } = await db.storage.from("supplier-photos").createSignedUrls(wanted, 3600);
+  for (const s of data ?? []) if (s.path && s.signedUrl) signed.set(s.path, s.signedUrl);
+  return signed;
+}
+
+/**
+ * Each product's photo, by product id: the supplier's own photo of it when it has one, else VRPRIME's photo of its
+ * master SKU. `masterOnly`: VRPRIME's photos alone (VRPRIME's products page, where those are set).
+ */
+export async function loadProductPhotos(supplierId: string, { masterOnly = false } = {}): Promise<Record<string, string>> {
+  const db = await supplierDb();
+  const [master, own] = await Promise.all([
+    db.rpc("supplier_product_photos", { p_supplier: supplierId }),
+    masterOnly ? Promise.resolve({ data: [], error: null }) : db.from("supplier_products").select("id, photo_path").eq("supplier_id", supplierId).not("photo_path", "is", null).limit(5000),
+  ]);
+  const rows = soft("product photos", master.error, master.data as { product_id: string; path: string }[] | null, []);
+  const photos: Record<string, string> = Object.fromEntries(rows.filter((r) => PHOTO_FILE.test(r.path)).map((r) => [r.product_id, photoSrc(r.path)]));
+  // The supplier's own photos; none before the godown migration (no such column yet).
+  const mine = own.error ? [] : ((own.data ?? []) as { id: string; photo_path: string | null }[]);
+  const signed = await signedPhotos(mine.map((p) => p.photo_path));
+  for (const p of mine) {
+    const src = p.photo_path ? signed.get(p.photo_path) : undefined;
+    if (src) photos[p.id] = src;
+  }
+  return photos;
 }

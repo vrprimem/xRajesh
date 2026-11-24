@@ -43,10 +43,51 @@ export const PAY_MODE_LABEL: Record<PayMode, string> = { cash: "Cash", upi: "UPI
 export const GST_RATES = [0, 5, 12, 18, 28] as const;
 
 export type RecipePer = "unit" | "carton";
-export type MoveReason = "purchase" | "production" | "count";
-export const MOVE_REASON_LABEL: Record<MoveReason, string> = { purchase: "Received", production: "Used in production", count: "Stock count" };
+export type MoveReason = "purchase" | "production" | "count" | "received";
+export const MOVE_REASON_LABEL: Record<MoveReason, string> = {
+  purchase: "Received (purchase)",
+  production: "Used in production",
+  count: "Stock count",
+  received: "Goods in",
+};
 
-export type ItemStock = { id: string; name: string; kind: ItemKind; unit: ItemUnit; low_level: number | null; active: boolean; on_hand: number };
+export type ItemStock = {
+  id: string;
+  name: string;
+  kind: ItemKind;
+  unit: ItemUnit;
+  low_level: number | null;
+  active: boolean;
+  on_hand: number;
+  /** How much one box holds, in its unit (null: counted one by one); and its photo in the supplier's files. */
+  box_qty?: number | null;
+  photo_path?: string | null;
+  /** A chemical mixed with water: `mix_qty` of it (in its unit) makes `mix_litres` litres of liquid ("1.5 kg makes 160 L"). */
+  mix_qty?: number | null;
+  mix_litres?: number | null;
+  /** What the godown staff call it ("100ml Bottle"), in English, Hindi and Marathi; their screens show these. */
+  simple_name?: string | null;
+  simple_name_hi?: string | null;
+  simple_name_mr?: string | null;
+};
+
+/** The name the godown staff know a supply by: its simple name, else its name. */
+export const staffItemName = (item: Pick<ItemStock, "name" | "simple_name">) => item.simple_name || item.name;
+
+/** How much of a chemical one litre of its liquid takes (1.5 kg makes 160 L: 0.009375 kg a litre); null if not mixed. */
+export function perLitre(item: Pick<ItemStock, "mix_qty" | "mix_litres">): number | null {
+  return item.mix_qty && item.mix_litres ? item.mix_qty / item.mix_litres : null;
+}
+
+/**
+ * Recipes in the supplies' own units. A chemical mixed with water is in a recipe as the litres of liquid a piece takes
+ * (0.25 L for a 250ml bottle), but its stock is in kg: such a line becomes kg by what the chemical makes (0.25 L of a
+ * 1.5 kg to 160 L chemical is 0.00234 kg), as production in the database takes it off.
+ */
+export function inStockUnits<R extends Pick<RecipeLine, "item_id" | "qty">>(recipes: readonly R[], items: readonly Pick<ItemStock, "id" | "mix_qty" | "mix_litres">[]): R[] {
+  const ratio = new Map(items.flatMap((i) => (perLitre(i) ? [[i.id, perLitre(i) as number] as const] : [])));
+  return recipes.map((r) => (ratio.has(r.item_id) ? { ...r, qty: r.qty * (ratio.get(r.item_id) as number) } : r));
+}
 export type ItemMove = { id: number; item_id: string; qty: number; reason: MoveReason; note: string | null; moved_on: string };
 export type VendorBalance = { id: string; name: string; phone: string | null; active: boolean; bought: number; paid: number; due: number };
 export type Purchase = {
@@ -102,12 +143,20 @@ export function isLow(item: Pick<ItemStock, "low_level" | "on_hand">): boolean {
   return item.low_level !== null && item.on_hand <= item.low_level;
 }
 
-/** Full cartons and loose units: "12 cartons + 4", "1 carton", "18 units". */
-export function cartonsAndUnits(units: number, unitsPerCarton: number): string {
-  if (!(unitsPerCarton > 0) || units < unitsPerCarton) return `${qtyFormat.format(units)} ${units === 1 ? "unit" : "units"}`;
-  const cartons = Math.floor(units / unitsPerCarton);
-  const loose = units - cartons * unitsPerCarton;
-  return `${qtyFormat.format(cartons)} ${cartons === 1 ? "carton" : "cartons"}${loose ? ` + ${qtyFormat.format(loose)}` : ""}`;
+/** Full boxes and loose pieces: "12 boxes + 4 pcs", "1 box", "18 pcs". */
+export function boxesAndPieces(pieces: number, perBox: number): string {
+  if (!(perBox > 0) || pieces < perBox) return `${qtyFormat.format(pieces)} pcs`;
+  const boxes = Math.floor(pieces / perBox);
+  const loose = pieces - boxes * perBox;
+  return `${qtyFormat.format(boxes)} ${boxes === 1 ? "box" : "boxes"}${loose ? ` + ${qtyFormat.format(loose)} pcs` : ""}`;
+}
+
+/** A quantity of a supply in its boxes, when it comes in them: "2 boxes + 400 pcs", "1.5 kg", "640 pcs". */
+export function formatBoxes(qty: number, unit: ItemUnit, perBox: number | null | undefined): string {
+  if (!perBox || perBox <= 0 || qty < perBox) return formatQty(qty, unit);
+  const boxes = Math.floor(qty / perBox + 1e-9);
+  const loose = Math.round((qty - boxes * perBox) * 1000) / 1000;
+  return `${qtyFormat.format(boxes)} ${boxes === 1 ? "box" : "boxes"}${loose > 0 ? ` + ${formatQty(loose, unit)}` : ""}`;
 }
 
 /** A number typed into a form ("1,200", " 4.5 "), or null when it is not one. */

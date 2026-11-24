@@ -1,7 +1,8 @@
 import { addDays, todayIST } from "@/lib/format";
 import { averageRates, costSheet, monthMoney } from "@/lib/money";
 import { dailyOutput, planTimeline, supplyDaysLeft, type PlanNeed } from "@/lib/production";
-import type { Cost, ItemMove, ItemStock, Payment, ProductionEntry, Purchase, ReadyRow, RecipeLine, VendorBalance } from "@/lib/supplies";
+import { inStockUnits, type Cost, type ItemMove, type ItemStock, type Payment, type ProductionEntry, type Purchase, type ReadyRow, type RecipeLine, type VendorBalance } from "@/lib/supplies";
+import { material } from "./materials-sample";
 
 // Made-up supplies, production and money for the development preview (/dev/supplier). Nothing here is real.
 
@@ -14,17 +15,52 @@ export function factorySample(plans: PlanNeed[]) {
   const month = today.slice(0, 7);
   const d = (n: number) => addDays(today, -n);
 
+  // The supplier's own bottles, triggers and caps (with what the godown staff call them), then made-up chemicals (one
+  // with what it makes with water), labels and cartons; how much a box holds and the stock are made up.
+  const own = (key: string, onHand: number, low: number, perBox: number): Omit<ItemStock, "id"> => {
+    const m = material(key);
+    return { name: m.name, kind: m.kind, unit: "pcs", low_level: low, active: true, on_hand: onHand, box_qty: perBox, simple_name: m.en, simple_name_hi: m.hi, simple_name_mr: m.mr };
+  };
   const items: ItemStock[] = [
-    { id: iid(1), name: "Bottle 500ml white", kind: "bottle", unit: "pcs", low_level: 1000, active: true, on_hand: 4200 },
-    { id: iid(2), name: "Trigger 28mm white", kind: "trigger", unit: "pcs", low_level: 1000, active: true, on_hand: 640 },
-    { id: iid(3), name: "Bottle 300ml", kind: "bottle", unit: "pcs", low_level: 500, active: true, on_hand: 2900 },
+    { id: iid(1), ...own("b500", 4200, 1000, 200) },
+    { id: iid(2), ...own("t500", 640, 1000, 500) },
+    { id: iid(3), ...own("b250", 2900, 500, 300) },
     { id: iid(4), name: "Kitchen cleaner chemical", kind: "chemical", unit: "litre", low_level: 200, active: true, on_hand: 1180.5 },
     { id: iid(5), name: "Repellent chemical", kind: "chemical", unit: "litre", low_level: 100, active: true, on_hand: 260 },
     { id: iid(6), name: "Front label kitchen", kind: "label", unit: "pcs", low_level: null, active: true, on_hand: 6000 },
     { id: iid(7), name: "Hard carton 24", kind: "carton_hard", unit: "pcs", low_level: 50, active: true, on_hand: 210 },
     { id: iid(8), name: "2-ply carton 48", kind: "carton_2ply", unit: "pcs", low_level: 50, active: true, on_hand: 35 },
     { id: iid(9), name: "Packing tape", kind: "packing", unit: "metre", low_level: null, active: true, on_hand: 1500 },
+    { id: iid(10), ...own("b100", 6000, 2000, 500) },
+    { id: iid(11), ...own("t100", 2400, 3000, 1000) },
+    { id: iid(12), ...own("c100", 8000, 2000, 2000) },
+    { id: iid(13), ...own("i100", 10000, 2000, 5000) },
+    { id: iid(14), ...own("mist", 1500, 1000, 1000) },
+    { id: iid(15), ...own("t250", 0, 500, 500) },
+    { id: iid(16), ...own("c250", 4000, 1000, 2000) },
+    { id: iid(17), ...own("i250", 5000, 2000, 5000) },
+    { id: iid(18), ...own("c500", 3000, 1000, 1000) },
+    { id: iid(19), ...own("i500", 2500, 1000, 5000) },
+    { id: iid(20), ...own("bshoe", 900, 300, 300) },
+    { id: iid(21), ...own("tshoe", 400, 500, 500) },
+    {
+      id: iid(22),
+      name: "REPELLENT CHEMICAL",
+      kind: "chemical",
+      unit: "kg",
+      low_level: 1.5,
+      active: true,
+      on_hand: 4.5,
+      box_qty: 1.5,
+      simple_name: "Repellent Chemical",
+      simple_name_hi: "रिपेलेंट केमिकल",
+      simple_name_mr: "रिपेलेंट केमिकल",
+      mix_qty: 1.5,
+      mix_litres: 160,
+    },
   ];
+  // As the database lists them: by kind, then name.
+  items.sort((a, b) => a.kind.localeCompare(b.kind) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 
   const recipes: RecipeLine[] = [
     { product_id: pid(1), item_id: iid(1), qty: 1, per: "unit" },
@@ -34,9 +70,12 @@ export function factorySample(plans: PlanNeed[]) {
     { product_id: pid(1), item_id: iid(7), qty: 1, per: "carton" },
     { product_id: pid(1), item_id: iid(9), qty: 2.5, per: "carton" },
     { product_id: pid(2), item_id: iid(3), qty: 1, per: "unit" },
-    { product_id: pid(2), item_id: iid(5), qty: 0.3, per: "unit" },
+    // The repellent chemical mixed with water: the litres of liquid a bottle holds.
+    { product_id: pid(2), item_id: iid(22), qty: 0.3, per: "unit" },
     { product_id: pid(2), item_id: iid(8), qty: 1, per: "carton" },
   ];
+  // The recipes as production takes them off: the chemical in kg.
+  const taken = inStockUnits(recipes, items);
 
   // Two weeks of production; nothing on the Sundays-ish gaps.
   const made: [number, number, number][] = [
@@ -54,7 +93,7 @@ export function factorySample(plans: PlanNeed[]) {
 
   const moves: ItemMove[] = [
     ...entries.flatMap((e, i) =>
-      recipes
+      taken
         .filter((r) => r.product_id === e.product_id)
         .map((r, j) => ({ id: 1000 + i * 10 + j, item_id: r.item_id, qty: -(r.per === "carton" ? (r.qty * e.units) / (e.product_id === pid(1) ? 24 : 48) : r.qty * e.units), reason: "production" as const, note: null, moved_on: e.made_on })),
     ),
@@ -100,7 +139,7 @@ export function factorySample(plans: PlanNeed[]) {
   for (const e of entries) if (e.made_on.slice(0, 7) === month) madeInMonth.set(e.product_id, (madeInMonth.get(e.product_id) ?? 0) + e.units);
   const sheet = costSheet(
     ready.map((r) => ({ id: r.product_id, name: r.name, units_per_carton: r.units_per_carton, active: r.active })),
-    recipes,
+    taken,
     averageRates(purchases),
     new Map(items.map((i) => [i.id, i.name])),
     madeInMonth,

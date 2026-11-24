@@ -14,10 +14,33 @@ const nOrNull = (v: unknown) => (v === null || v === undefined ? null : Number(v
 /** The supplier's supplies and their stock. `installed` is false before the supplies migration is applied. */
 export async function loadItemStock(supplierId: string): Promise<{ items: ItemStock[]; installed: boolean }> {
   const db = await supplierDb();
-  const { data, error } = await db.rpc("supplier_item_stock", { p_supplier: supplierId });
-  if (notInstalled(error)) return { items: [], installed: false };
-  const rows = soft("supplies", error, data as ItemStock[] | null, []);
-  return { items: rows.map((r) => ({ ...r, low_level: nOrNull(r.low_level), on_hand: n(r.on_hand) })), installed: true };
+  const [stock, extra] = await Promise.all([
+    db.rpc("supplier_item_stock", { p_supplier: supplierId }),
+    // Its box, photo, simple names and mix (the godown migration); none before it is applied.
+    db.from("supplier_items").select("id, box_qty, photo_path, simple_name, simple_name_hi, simple_name_mr, mix_qty, mix_litres").eq("supplier_id", supplierId).limit(5000),
+  ]);
+  if (notInstalled(stock.error)) return { items: [], installed: false };
+  const rows = soft("supplies", stock.error, stock.data as ItemStock[] | null, []);
+  type Extra = Pick<ItemStock, "id" | "box_qty" | "photo_path" | "simple_name" | "simple_name_hi" | "simple_name_mr" | "mix_qty" | "mix_litres">;
+  const more = new Map((extra.error ? [] : ((extra.data ?? []) as Extra[])).map((x) => [x.id, x]));
+  return {
+    items: rows.map((r) => {
+      const x = more.get(r.id);
+      return {
+        ...r,
+        low_level: nOrNull(r.low_level),
+        on_hand: n(r.on_hand),
+        box_qty: nOrNull(x?.box_qty),
+        photo_path: x?.photo_path ?? null,
+        simple_name: x?.simple_name ?? null,
+        simple_name_hi: x?.simple_name_hi ?? null,
+        simple_name_mr: x?.simple_name_mr ?? null,
+        mix_qty: nOrNull(x?.mix_qty),
+        mix_litres: nOrNull(x?.mix_litres),
+      };
+    }),
+    installed: true,
+  };
 }
 
 /** Changes to the supplies' stock from a day on, newest first. */

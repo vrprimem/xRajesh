@@ -34,7 +34,7 @@ export function OutputChart({ days, today, title }: { days: { day: string; units
         </p>
         <ul aria-label={title} className="relative flex h-40 items-end gap-[2px] border-b border-line">
           {days.map((d, i) => {
-            const label = `${longDay.format(asDate(d.day))}: ${formatNumber(d.units)} ${d.units === 1 ? "unit" : "units"}`;
+            const label = `${longDay.format(asDate(d.day))}: ${formatNumber(d.units)} pcs`;
             const capped = i === best || d.day === today;
             return (
               <li

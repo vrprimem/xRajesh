@@ -106,27 +106,27 @@ async function step(fn: string, args: Record<string, unknown>, what: string, don
 export async function voidCarton(cartonId: unknown, reason: unknown): Promise<ActionResult> {
   const carton = id(cartonId);
   if (!carton) return NOT_ALLOWED;
-  return step("supplier_carton_void", { p_carton: carton, p_reason: typeof reason === "string" ? reason.slice(0, 200) : "" }, "void the label", "Label voided");
+  return step("supplier_carton_void", { p_carton: carton, p_reason: typeof reason === "string" ? reason.slice(0, 200) : "" }, "void the label", "Label voided", true);
 }
 
 /** Voids a damaged label and asks the inventory software for a new one for the same carton. */
 export async function reprintCarton(cartonId: unknown): Promise<ActionResult> {
   const carton = id(cartonId);
   if (!carton) return NOT_ALLOWED;
-  return step("supplier_carton_reprint", { p_carton: carton }, "reprint the label", "Old label voided. The new one is being made: refresh in a few seconds and download it with its PDF button.");
+  return step("supplier_carton_reprint", { p_carton: carton }, "reprint the label", "Old label voided. The new one is being made: refresh in a few seconds and download it with its PDF button.", true);
 }
 
 /** "Try again": asks the inventory software for the labels a dispatch is still missing. */
 export async function requestLabels(dispatchId: unknown): Promise<ActionResult> {
   const dispatch = id(dispatchId);
   if (!dispatch) return NOT_ALLOWED;
-  return step("supplier_labels_request", { p_dispatch: dispatch }, "ask for the labels", "Asking the inventory software for the labels. This takes a few seconds.");
+  return step("supplier_labels_request", { p_dispatch: dispatch }, "ask for the labels", "Asking the inventory software for the labels. This takes a few seconds.", true);
 }
 
 export async function voidUnusedLabels(dispatchId: unknown): Promise<ActionResult> {
   const dispatch = id(dispatchId);
   if (!dispatch) return NOT_ALLOWED;
-  return step("supplier_dispatch_void_unused", { p_dispatch: dispatch }, "void the unused labels", "Unused labels voided");
+  return step("supplier_dispatch_void_unused", { p_dispatch: dispatch }, "void the unused labels", "Unused labels voided", true);
 }
 
 /** Attaches the vehicle photo already uploaded to "<supplier>/<dispatch>/<uuid>.jpg". The database checks the path. */
@@ -139,7 +139,7 @@ export async function setDispatchPhoto(dispatchId: unknown, path: unknown): Prom
 export async function closeDispatch(dispatchId: unknown): Promise<ActionResult> {
   const dispatch = id(dispatchId);
   if (!dispatch) return NOT_ALLOWED;
-  return step("supplier_dispatch_close", { p_dispatch: dispatch }, "close the dispatch", "Dispatch closed and locked");
+  return step("supplier_dispatch_close", { p_dispatch: dispatch }, "close the dispatch", "Dispatch closed and locked", true);
 }
 
 export async function cancelDispatch(dispatchId: unknown): Promise<ActionResult> {
@@ -539,6 +539,8 @@ export async function removeMasterPhoto(code: unknown): Promise<ActionResult> {
 export async function repackCartons(cartonIds: unknown, units: unknown, weight: unknown = null): Promise<ActionResult> {
   const who = await actor();
   if (!who) return NOT_SIGNED_IN;
+  // A new label is printing: the owner's, not the warehouse person's.
+  if (who.scanner) return NOT_ALLOWED;
   const ids = z.array(UUID).min(1).max(500).safeParse(cartonIds);
   const n = z.number().int().min(1).max(100000).safeParse(units);
   const w = z.number().gt(0).max(1000).nullable().safeParse(weight);

@@ -41,9 +41,10 @@ function CartonCounter({ planned, loaded, left }: { planned: number; loaded: num
 
 /**
  * One dispatch: its counts, the steps to finish it, and every label.
- *   who = "owner"    the supplier owner: everything, including cancelling a plan
- *   who = "scanner"  the supplier's warehouse person: scan, labels, photo, close
- *   who = "vrprime"  VRPRIME owner and admin: read, and mark a closed dispatch received
+ *   who = "owner"    the supplier owner: everything, including printing labels, closing and cancelling a plan
+ *   who = "scanner"  the supplier's warehouse person: scan the cartons and add the vehicle photo, nothing more (no
+ *                    printing, voiding or closing: those are the owner's)
+ *   who = "vrprime"  VRPRIME owner and admin: read, download labels, and mark a closed dispatch received
  * `products`: the supplier's products, for adding more to a dispatch still being loaded (the owner only).
  */
 export function DispatchPanel({ detail, who, base, photos = {}, products = [] }: { detail: DispatchDetail; who: "owner" | "scanner" | "vrprime"; base: string; photos?: Record<string, string>; products?: ProductRow[] }) {
@@ -61,8 +62,10 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
   const made = counts.planned - owed;
   const arrived = cartons.filter((c) => c.inbound_status === "received").length;
   const supplierSide = who !== "vrprime";
-  // The labels to download, in parts when a product has more than 50 (one part otherwise).
-  const parts = d.status === "cancelled" ? [] : labelParts(labelsToDownload(cartons, open));
+  const owner = who === "owner";
+  // The labels to download, in parts when a product has more than 50 (one part otherwise). Printing is not the
+  // warehouse person's.
+  const parts = d.status === "cancelled" || who === "scanner" ? [] : labelParts(labelsToDownload(cartons, open));
   // What the loaded cartons weigh, by their labels; what the plan weighs, by its lines (cartons with no weight left out).
   const loaded = loadedKg(cartons);
   const planned = plannedKg(lines);
@@ -147,7 +150,7 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
               <button type="button" disabled={pending} onClick={() => router.refresh()} className={buttonClass("row")}>
                 Refresh
               </button>
-              {supplierSide && (d.labels_error || !d.labels_run_at) ? (
+              {owner && (d.labels_error || !d.labels_run_at) ? (
                 <button type="button" disabled={pending} onClick={() => run(() => requestLabels(d.id))} className={buttonClass("row")}>
                   Try again
                 </button>
@@ -224,6 +227,19 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
       </Card>
 
       {open && supplierSide ? (
+        <input ref={photoRef} type="file" accept="image/*" capture="environment" className="sr-only" aria-label="Photo of the loaded vehicle" onChange={(e) => e.target.files?.[0] && void uploadPhoto(e.target.files[0])} />
+      ) : null}
+
+      {open && who === "scanner" ? (
+        <Card className="g-pad">
+          <SectionHead title="Photo of the loaded vehicle" sub="Take it when the truck is loaded. The owner closes the dispatch." />
+          <button type="button" disabled={uploading || pending} onClick={() => photoRef.current?.click()} className={buttonClass(d.vehicle_photo_path ? "outline" : "primary")}>
+            {uploading ? "Uploading..." : d.vehicle_photo_path ? "Replace vehicle photo" : "Add vehicle photo"}
+          </button>
+        </Card>
+      ) : null}
+
+      {open && owner ? (
         <Card className="g-pad">
           <SectionHead title="Close the dispatch" sub="All three are needed. Closing locks the record." />
           <ul className="flex flex-col gap-1.5 text-[15px]">
@@ -240,7 +256,6 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
             ))}
           </ul>
           <div className="mt-4 flex flex-wrap gap-2">
-            <input ref={photoRef} type="file" accept="image/*" capture="environment" className="sr-only" aria-label="Photo of the loaded vehicle" onChange={(e) => e.target.files?.[0] && void uploadPhoto(e.target.files[0])} />
             <button type="button" disabled={uploading || pending} onClick={() => photoRef.current?.click()} className={buttonClass("outline")}>
               {uploading ? "Uploading..." : d.vehicle_photo_path ? "Replace vehicle photo" : "Add vehicle photo"}
             </button>
@@ -252,7 +267,7 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
             <button type="button" disabled={pending || steps.some((s) => !s.done)} onClick={close} className={buttonClass("primary")}>
               Close dispatch
             </button>
-            {who === "owner" && d.status === "planned" ? (
+            {d.status === "planned" ? (
               <button type="button" disabled={pending} onClick={() => run(() => cancelDispatch(d.id), "Cancel this plan? All its labels become void.")} className={buttonClass("danger")}>
                 Cancel plan
               </button>
@@ -353,7 +368,7 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
 
       {open && who === "owner" ? <AddProducts dispatchId={d.id} products={products} lines={lines} photos={photos} /> : null}
 
-      <LabelGroups dispatchId={d.id} base={base} lines={lines} cartons={cartons} canChange={open && supplierSide} photos={photos} />
+      <LabelGroups dispatchId={d.id} base={base} lines={lines} cartons={cartons} canChange={open && owner} canPrint={who !== "scanner"} photos={photos} />
     </div>
   );
 }
