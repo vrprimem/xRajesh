@@ -21,11 +21,11 @@ test("the warehouse person has his supplies, dispatches and scanning, and nothin
   assert.deepEqual(current("/supplier/scan"), ["Scan"]);
 });
 
-test("the owner keeps every page, money and alerts included", () => {
+test("the owner's pages: no Production or Money (the godown enters what is made)", () => {
   const links = supplierLinks("supplier_owner", 2);
   assert.deepEqual(
     links.map((l) => l.label),
-    ["Home", "Godown", "Dispatches", "Production", "Money", "Supplies", "Products", "Reports", "Alerts"],
+    ["Home", "Godown", "Dispatches", "Supplies", "Products", "Reports", "Alerts"],
   );
   assert.equal(links.find((l) => l.label === "Alerts")?.badge, 2);
 });

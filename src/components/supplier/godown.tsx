@@ -15,6 +15,7 @@ import {
   boxWord,
   byShelf,
   canMake,
+  formulaOf,
   fromBoxes,
   inBoxes,
   isWeighed,
@@ -59,6 +60,11 @@ function qtyText(qty: number, perBox: number | null, unit: GodownUnit, lang: Lan
   if (boxes === 0) return rest;
   const head = `${formatNumber(boxes)} ${boxWord(boxes, lang)}`;
   return loose ? `${head} + ${rest}` : head;
+}
+/** The chemical in one bottle: grams for a chemical in kg ("2.3 g"), else in its unit. */
+function perBottleText(per: number, unit: GodownUnit, lang: Lang): string {
+  if (unit === "kg") return `${formatNumber(Math.round(per * 10000) / 10)} g`;
+  return `${formatNumber(Math.round(per * 1000) / 1000)} ${WORDS[lang][unit]}`;
 }
 const itemQty = (item: GodownItem, qty: number, lang: Lang) => qtyText(qty, item.perBox, item.unit, lang);
 const productQty = (product: GodownProduct, pieces: number, lang: Lang) => qtyText(Math.max(0, Math.round(pieces)), product.perCarton, "pcs", lang);
@@ -306,6 +312,11 @@ export function Godown({
     onProductPhoto ? { label: photoBusy === p.id ? "..." : t(p.hasPhoto ? "changePhoto" : "addPhoto"), disabled: photoBusy !== null, onClick: () => takePhoto("product", p.id) } : undefined;
 
   const litreWord = WORDS[lang].litre;
+  // Each chemical mixed with water, with its formula.
+  const formulas = items.flatMap((i) => {
+    const f = formulaOf(i, products);
+    return f ? [{ item: i, f }] : [];
+  });
   /** Under a chemical mixed with water: the litres of liquid it makes and the bottles they fill. */
   const extraFor = (i: GodownItem): ReactNode => {
     if (!i.mix) return null;
@@ -452,6 +463,37 @@ export function Godown({
               <b>{t("lowList")}:</b> {low.map((i) => `${nameOf(i)} (${itemQty(i, Math.max(0, i.onHand), lang)})`).join(", ")}
             </p>
           ) : null}
+        </section>
+      ) : null}
+
+      {formulas.length ? (
+        // What each chemical makes: one packet and water, the liquid, the bottles of each size, the chemical in each.
+        <section aria-labelledby="gd-formula" className="sp-card g-pad flex flex-col gap-3">
+          <div>
+            <h2 id="gd-formula" className="t-card-title">
+              {t("formula")}
+            </h2>
+            <p className="t-caption mt-0.5">{t("formulaSub")}</p>
+          </div>
+          <ul className="flex flex-col divide-y divide-line-soft">
+            {formulas.map(({ item, f }) => (
+              <li key={item.id} className="flex items-start gap-3 py-2.5">
+                <Picture src={item.photo} name={nameOf(item)} size={44} />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{nameOf(item)}</span>
+                  <span className="block text-[17px] font-bold">
+                    {t("packetMakes", { qty: `${formatNumber(f.qty)} ${WORDS[lang][item.unit]}`, litres: `${formatNumber(f.litres)} ${litreWord}` })}
+                  </span>
+                  {f.sizes.map((s) => (
+                    <span key={s.size} className="mt-0.5 flex items-baseline justify-between gap-3 text-[15px]">
+                      <b>{s.size}</b>
+                      <span className="text-right tabular-nums">{t("bottlesEach", { bottles: formatNumber(s.bottles), per: perBottleText(s.perBottle, item.unit, lang) })}</span>
+                    </span>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

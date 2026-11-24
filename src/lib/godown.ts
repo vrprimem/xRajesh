@@ -120,6 +120,21 @@ export function bottleSizes(chemicalId: string, products: readonly Pick<GodownPr
   return sizes;
 }
 
+/**
+ * A chemical's formula: one packet (`mix.qty`, in its unit) makes `litres` of liquid, which fills so many bottles of each
+ * size its products take; and how much chemical goes in one bottle, in its unit (Repellent: 1.5 kg makes 160 L, 640
+ * of 250ml at 0.00234 kg each). Null for a material not mixed with water.
+ */
+export function formulaOf(item: Pick<GodownItem, "id" | "mix">, products: readonly Pick<GodownProduct, "recipe">[]): { qty: number; litres: number; sizes: { size: string; bottles: number; perBottle: number }[] } | null {
+  if (!item.mix || !(item.mix.qty > 0) || !(item.mix.litres > 0)) return null;
+  const { qty, litres } = item.mix;
+  return {
+    qty,
+    litres,
+    sizes: bottleSizes(item.id, products).map((s) => ({ size: sizeLabel(s), bottles: Math.floor(litres / s + 1e-9), perBottle: (qty * s) / litres })),
+  };
+}
+
 /** How many bottles of each size some litres fill: 160 L fills 640 of 250ml, or 1,600 of 100ml. */
 export function bottlesFrom(litres: number, sizes: readonly number[]): { size: string; bottles: number }[] {
   return sizes.map((s) => ({ size: sizeLabel(s), bottles: Math.max(0, Math.floor(litres / s + 1e-9)) }));
@@ -225,6 +240,10 @@ const EN = {
   photoTip: "Add a photo of each material and product: the staff find things by their photo.",
   addMaterial: "New material",
   addProduct: "New product",
+  formula: "Chemical formula",
+  formulaSub: "1 packet of chemical + water: the liquid it makes and the bottles it fills",
+  packetMakes: "1 packet {qty} = {litres}",
+  bottlesEach: "{bottles} bottles · {per} in each",
   makes: "= {litres} of liquid",
   ofLiquid: "{litres} of liquid",
   fills: "Bottles it fills",
@@ -291,6 +310,10 @@ export const WORDS: Record<Lang, Words> = {
     photoTip: "हर माल और प्रोडक्ट का फोटो डालें: स्टाफ फोटो देखकर पहचानता है।",
     addMaterial: "नया माल",
     addProduct: "नया प्रोडक्ट",
+    formula: "केमिकल फॉर्मूला",
+    formulaSub: "1 पैकेट केमिकल + पानी: कितना लिक्विड बनेगा और कितनी बोतल भरेंगी",
+    packetMakes: "1 पैकेट {qty} = {litres}",
+    bottlesEach: "{bottles} बोतल · हर बोतल में {per}",
     makes: "= {litres} लिक्विड",
     ofLiquid: "{litres} लिक्विड",
     fills: "इतनी बोतल भरेंगी",
@@ -353,6 +376,10 @@ export const WORDS: Record<Lang, Words> = {
     photoTip: "प्रत्येक माल आणि प्रॉडक्टचा फोटो टाका: स्टाफ फोटो पाहून ओळखतो.",
     addMaterial: "नवीन माल",
     addProduct: "नवीन प्रॉडक्ट",
+    formula: "केमिकल फॉर्म्युला",
+    formulaSub: "1 पॅकेट केमिकल + पाणी: किती लिक्विड बनेल आणि किती बाटल्या भरतील",
+    packetMakes: "1 पॅकेट {qty} = {litres}",
+    bottlesEach: "{bottles} बाटल्या · प्रत्येक बाटलीत {per}",
     makes: "= {litres} लिक्विड",
     ofLiquid: "{litres} लिक्विड",
     fills: "इतक्या बाटल्या भरतील",

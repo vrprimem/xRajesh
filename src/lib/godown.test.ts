@@ -9,6 +9,7 @@ import {
   boxWord,
   byShelf,
   canMake,
+  formulaOf,
   fromBoxes,
   inBoxes,
   levelOf,
@@ -168,6 +169,21 @@ test("chemicals: what a packet makes with water, and the bottles it fills in eac
   assert.equal(sizeLabel(1.5), "1.5L");
   assert.deepEqual(bottleSizes("ch-rep", [{ recipe: [{ itemId: "ch-rep", qty: 0.02, per: "carton", litres: 2 }] }]), [], "taken by the carton: no bottle size");
   assert.deepEqual(bottleSizes("ch-rep", [{ recipe: [{ itemId: "ch-rep", qty: 0.3, per: "unit" }] }]), [], "not mixed with water: no bottle size");
+});
+
+test("a chemical's formula: what a packet makes, the bottles of each size, and the chemical in each", () => {
+  const take = (chemical: string, litres: number) => ({ recipe: [{ itemId: chemical, qty: 0, per: "unit" as const, litres }] });
+  const products = [take("rep", 0.25), take("rep", 0.1), take("scr", 0.25), take("scr", 0.5)];
+  const rep = formulaOf({ id: "rep", mix: { qty: 1.5, litres: 160 } }, products);
+  assert.deepEqual(rep && { ...rep, sizes: rep.sizes.map((s) => ({ ...s, perBottle: Math.round(s.perBottle * 1e6) / 1e6 })) }, {
+    qty: 1.5,
+    litres: 160,
+    sizes: [{ size: "250ml", bottles: 640, perBottle: 0.002344 }, { size: "100ml", bottles: 1600, perBottle: 0.000938 }],
+  });
+  const scr = formulaOf({ id: "scr", mix: { qty: 1, litres: 20 } }, products);
+  assert.deepEqual(scr?.sizes.map((s) => [s.size, s.bottles, s.perBottle]), [["250ml", 80, 0.0125], ["500ml", 40, 0.025]], "Screen: 12.5 g and 25 g a bottle");
+  assert.deepEqual(formulaOf({ id: "kit", mix: { qty: 1, litres: 12 } }, products)?.sizes, [], "no product takes it yet: no bottle sizes");
+  assert.equal(formulaOf({ id: "bottle" }, products), null, "not mixed with water");
 });
 
 test("what can still be made takes a chemical by the litres of liquid the bottles hold", () => {

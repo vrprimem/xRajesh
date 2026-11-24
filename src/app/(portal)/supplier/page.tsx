@@ -8,11 +8,11 @@ import { StockTable } from "@/components/supplier/stock-table";
 import { StatTile } from "@/components/supplier/entry-kit";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
-import { addDays, formatDate, formatINR, formatNumber, noun, todayIST } from "@/lib/format";
+import { addDays, formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { dispatchCounts } from "@/lib/supplier";
 import { isLow, staffItemName } from "@/lib/supplies";
 import { loadDispatches, loadPlans, loadProduce, loadProductPhotos, loadStock } from "@/server/supplier-data";
-import { loadItemStock, loadOwed, loadProduction } from "@/server/supplies-data";
+import { loadItemStock, loadProduction } from "@/server/supplies-data";
 import { ownerPage } from "@/server/staff-pages";
 
 export const metadata: Metadata = { title: "Supplier portal" };
@@ -26,7 +26,7 @@ export default async function SupplierHome() {
   ownerPage(user);
   const owner = user.role === "supplier_owner";
   const today = todayIST();
-  const [plans, produce, dispatches, stock, photos, made, supplies, owed] = await Promise.all([
+  const [plans, produce, dispatches, stock, photos, made, supplies] = await Promise.all([
     loadPlans(user.supplierId, true),
     owner ? loadProduce(user.supplierId) : [],
     loadDispatches(user.supplierId),
@@ -34,7 +34,6 @@ export default async function SupplierHome() {
     loadProductPhotos(user.supplierId),
     loadProduction(user.supplierId, addDays(today, -6)),
     loadItemStock(user.supplierId),
-    owner ? loadOwed(user.supplierId) : 0,
   ]);
   const madeToday = made.filter((e) => e.made_on === today).reduce((sum, e) => sum + e.units, 0);
   const madeWeek = made.reduce((sum, e) => sum + e.units, 0);
@@ -53,8 +52,8 @@ export default async function SupplierHome() {
           <SectionHead
             title="Your factory"
             action={
-              <Link href="/supplier/production" className={buttonClass("primary")}>
-                Enter production
+              <Link href="/supplier/godown" className={buttonClass("primary")}>
+                Open godown
               </Link>
             }
           />
@@ -62,7 +61,6 @@ export default async function SupplierHome() {
             <StatTile label="Made today" value={formatNumber(madeToday)} sub="pcs" />
             <StatTile label="Last 7 days" value={formatNumber(madeWeek)} sub="pcs" />
             <StatTile label="Supplies low" value={formatNumber(low.length)} sub={low.length ? low.slice(0, 2).map((i) => (owner ? i.name : staffItemName(i))).join(", ") + (low.length > 2 ? " ..." : "") : "none"} tone={low.length ? "bad" : undefined} />
-            {owner ? <StatTile label="Owed to vendors" value={formatINR(owed)} sub={<Link href="/supplier/money" className="underline underline-offset-4">Money</Link>} tone={owed > 0 ? "bad" : undefined} /> : null}
           </div>
         </Card>
       ) : null}

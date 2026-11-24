@@ -287,6 +287,11 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
             ownPhotos={who === "owner" && sp.who !== "vrprime"}
             startAdding={sp.add === "1"}
           />
+          {sp.who !== "vrprime" ? (
+            <div className="mt-4">
+              <RecipeEditor products={f.ready} items={f.items} recipes={f.recipes} canEdit={who === "owner"} />
+            </div>
+          ) : null}
         </>
       ) : null}
 
