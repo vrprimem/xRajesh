@@ -79,12 +79,49 @@ export function nextStep(d: ListDispatch, who: Who): NextStep | null {
   return { label: "Close dispatch", to: "page" };
 }
 
-/** A dispatch's products and their cartons (a product on two lines counted once), most cartons first. */
-export function productCartons(lines: ListLine[]): { product_id: string; product: string; cartons: number }[] {
-  const by = new Map<string, { product_id: string; product: string; cartons: number }>();
+/** Kilograms: what the cartons with a known weight weigh in all, and how many cartons have no weight. */
+export type Kg = { kg: number; unweighed: number };
+
+const kgOf = (w: number | string | null | undefined): number => {
+  const n = Number(w);
+  return w !== null && w !== undefined && Number.isFinite(n) && n > 0 ? n : 0;
+};
+const tenth = (n: number) => Math.round(n * 10) / 10;
+
+/** What a dispatch's planned cartons weigh, by each line's carton weight. */
+export function plannedKg(lines: { cartons: number; weight_per_carton?: number | null }[]): Kg {
+  let kg = 0;
+  let unweighed = 0;
   for (const l of lines) {
-    const p = by.get(l.product_id) ?? { product_id: l.product_id, product: l.product, cartons: 0 };
+    const w = kgOf(l.weight_per_carton);
+    if (w) kg += l.cartons * w;
+    else unweighed += l.cartons;
+  }
+  return { kg: tenth(kg), unweighed };
+}
+
+/** What the loaded cartons weigh, by the weight on each label. */
+export function loadedKg(cartons: { status: "issued" | "loaded" | "void"; weight_per_carton?: number | null }[]): Kg {
+  let kg = 0;
+  let unweighed = 0;
+  for (const c of cartons) {
+    if (c.status !== "loaded") continue;
+    const w = kgOf(c.weight_per_carton);
+    if (w) kg += w;
+    else unweighed += 1;
+  }
+  return { kg: tenth(kg), unweighed };
+}
+
+/** A dispatch's products, their cartons and weight (a product on two lines counted once), most cartons first. */
+export function productCartons(lines: (ListLine & { weight_per_carton?: number | null })[]): ({ product_id: string; product: string; cartons: number } & Kg)[] {
+  const by = new Map<string, { product_id: string; product: string; cartons: number } & Kg>();
+  for (const l of lines) {
+    const p = by.get(l.product_id) ?? { product_id: l.product_id, product: l.product, cartons: 0, kg: 0, unweighed: 0 };
+    const w = plannedKg([l]);
     p.cartons += l.cartons;
+    p.kg = tenth(p.kg + w.kg);
+    p.unweighed += w.unweighed;
     by.set(l.product_id, p);
   }
   return [...by.values()].sort((a, b) => b.cartons - a.cartons || a.product.localeCompare(b.product));
@@ -105,6 +142,73 @@ export type LabelGroup<C extends GroupLabel> = {
 };
 
 const ORDER = { issued: 0, loaded: 1, void: 2 } as const;
+
+// ---- Label downloads in parts ------------------------------------------------------------------------------------------
+
+/** The VRPRIME inventory software makes at most this many labels of a product at a time. */
+export const LABELS_PER_PRINT = 50;
+
+type PartLabel = { product_id: string; product: string; carton_no: number; status: "issued" | "loaded" | "void" };
+
+/** The labels a download holds: while the dispatch is being loaded the ones still to scan, after that every label that is not void. */
+export function labelsToDownload<C extends { status: "issued" | "loaded" | "void" }>(cartons: C[], open: boolean): C[] {
+  return cartons.filter((c) => (open ? c.status === "issued" : c.status !== "void"));
+}
+
+export type PartProduct = { product_id: string; product: string; from: number; to: number; of: number };
+export type LabelPart<C> = { part: number; labels: C[]; products: PartProduct[] };
+
+/**
+ * Labels to download in parts, the way the inventory software makes them: at most 50 of a product at a time. Part 1
+ * holds the first 50 labels of every product, part 2 each product's 51st to 100th, and so on, each part in carton order.
+ * With no product over 50 there is one part: every label.
+ */
+export function labelParts<C extends PartLabel>(labels: C[]): LabelPart<C>[] {
+  const byProduct = new Map<string, C[]>();
+  for (const l of [...labels].sort((a, b) => a.carton_no - b.carton_no)) {
+    const list = byProduct.get(l.product_id);
+    if (list) list.push(l);
+    else byProduct.set(l.product_id, [l]);
+  }
+  const count = Math.max(0, ...[...byProduct.values()].map((list) => Math.ceil(list.length / LABELS_PER_PRINT)));
+  const parts: LabelPart<C>[] = [];
+  for (let k = 0; k < count; k++) {
+    const part: LabelPart<C> = { part: k + 1, labels: [], products: [] };
+    for (const [product_id, list] of byProduct) {
+      const slice = list.slice(k * LABELS_PER_PRINT, (k + 1) * LABELS_PER_PRINT);
+      if (!slice.length) continue;
+      part.labels.push(...slice);
+      part.products.push({ product_id, product: list[0].product, from: k * LABELS_PER_PRINT + 1, to: k * LABELS_PER_PRINT + slice.length, of: list.length });
+    }
+    part.labels.sort((a, b) => a.carton_no - b.carton_no);
+    parts.push(part);
+  }
+  return parts;
+}
+
+/** What a part holds, in words: "Old Rat 1 to 50 of 60, and all labels of the other 8 products". */
+export function partSummary(part: { products: PartProduct[] }): string {
+  const split = part.products.filter((p) => p.of > LABELS_PER_PRINT);
+  const whole = part.products.filter((p) => p.of <= LABELS_PER_PRINT);
+  const pieces = split.map((p) => `${p.product} ${p.from} to ${p.to} of ${p.of}`);
+  if (whole.length === 1) pieces.push(`${whole[0].of === 1 ? "the 1 label" : `all ${whole[0].of} labels`} of ${whole[0].product}`);
+  else if (whole.length > 1) pieces.push(`all labels of ${split.length ? "the other " : ""}${whole.length} products`);
+  if (pieces.length < 2) return pieces[0] ?? "";
+  return `${pieces.slice(0, -1).join(", ")} and ${pieces.at(-1)}`;
+}
+
+/** Carton numbers as short runs: [1, 2, 3, 7, 9, 10] is "1–3, 7, 9–10". After `max` runs the rest is "…". */
+export function cartonRanges(numbers: number[], max = 4): string {
+  const sorted = [...new Set(numbers)].sort((a, b) => a - b);
+  const runs: string[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    runs.push(i === j ? `${sorted[i]}` : `${sorted[i]}–${sorted[j]}`);
+    i = j;
+  }
+  return runs.length > max ? `${runs.slice(0, max).join(", ")}, …` : runs.join(", ");
+}
 
 /** A dispatch's labels by product, with what is loaded of what was planned. */
 export function labelGroups<C extends GroupLabel>(lines: { product_id: string; product: string; cartons: number }[], cartons: C[]): LabelGroup<C>[] {

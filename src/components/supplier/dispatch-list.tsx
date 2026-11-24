@@ -3,7 +3,7 @@ import { DispatchStatusChip } from "@/components/supplier/dispatch-panel";
 import { CheckIcon, CloseIcon, TruckIcon } from "@/components/icons";
 import { WithPhoto } from "@/components/supplier/product-photo";
 import { Card, EmptyState, buttonClass } from "@/components/ui";
-import { arrivalOf, nextStep, productCartons, stageOf, type Who } from "@/lib/dispatch-view";
+import { arrivalOf, loadedKg, nextStep, plannedKg, productCartons, stageOf, type Who } from "@/lib/dispatch-view";
 import { dueLabel, formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { istDay } from "@/lib/report";
 import { dispatchCounts, labelsOwed } from "@/lib/supplier";
@@ -60,6 +60,9 @@ function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
   const step = nextStep(d, who);
   const href = `${base}/${d.id}`;
   const missing = arrival ? arrival.loaded - arrival.arrived - arrival.rejected : 0;
+  // Once it has left, what its loaded cartons weigh (by their labels); before that, what the plan weighs.
+  const sent = stage === "on_the_way" || stage === "arrived";
+  const weight = sent ? loadedKg(d.cartons) : plannedKg(d.lines);
 
   const look = STAGE_LOOK[stage];
   const band =
@@ -120,11 +123,23 @@ function DispatchCard({ d, base, who, photos, warehouse, today }: CardProps) {
               <WithPhoto src={photos[p.product_id]} name={p.product} size={36}>
                 <span className="font-semibold">{p.product}</span>
               </WithPhoto>
-              <span className="shrink-0 tabular-nums">
+              <span className="shrink-0 text-right tabular-nums">
                 {formatNumber(p.cartons)} {noun(p.cartons, "carton")}
+                {p.kg ? <span className="block text-[14px] text-muted">{formatNumber(p.kg)} kg</span> : null}
               </span>
             </li>
           ))}
+          <li className="flex items-center justify-between gap-3 border-t border-line-soft pt-2 text-[15px]">
+            <span className="font-semibold">{sent ? "Weight sent" : "Weight"}</span>
+            <span className="shrink-0 text-right font-semibold tabular-nums">
+              {weight.kg ? `${formatNumber(weight.kg)} kg` : "No carton weights"}
+              {weight.kg && weight.unweighed ? (
+                <span className="block text-[14px] font-normal text-muted">
+                  and {formatNumber(weight.unweighed)} {noun(weight.unweighed, "carton")} with no weight
+                </span>
+              ) : null}
+            </span>
+          </li>
         </ul>
       ) : null}
 

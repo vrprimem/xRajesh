@@ -5,14 +5,15 @@
 //   { "job": "issue", "dispatch_id": "<uuid>" }  print the labels a dispatch still needs, 50 at a time, saving each batch
 //   { "job": "receive" }                         every 30 minutes: see which loaded cartons the warehouse has scanned in
 //
-// It asks the inventory software for exactly two things (see labels-api.ts): print labels, and read label states. It
-// never scans, never does inbound, never retires a label, never changes a product or stock.
+// It asks the inventory software for exactly two things (see labels-api.ts): print labels, and read label states (a
+// product's list, and one label by its number for those too old to be in the list). It never scans, never does inbound,
+// never retires a label, never changes a product or stock.
 //
 // Every request must carry `x-internal-secret`, which this function checks with the database, so "Verify JWT" is off.
 // Secrets: VRPRIME_API_USERNAME and VRPRIME_API_PASSWORD (the same ones the stock sync uses).
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { createLabelsClient, hasArrived, MAX_PER_REQUEST } from "./labels-api.ts";
+import { createLabelsClient, findArrivals, MAX_PER_REQUEST, type Wait } from "./labels-api.ts";
 
 const SECRET_ENV_NAMES = ["VRPRIME_API_PASSWORD", "VRPRIME_API_USERNAME"];
 
@@ -89,25 +90,25 @@ async function issue(db: SupabaseClient, dispatchId: string): Promise<string> {
   return `printed ${made} labels`;
 }
 
-type Wait = { warehouse_vid: string; sku: string; serials: string[] };
-
-/** Marks the loaded cartons the warehouse has scanned in, reading each product's label states once. */
+/**
+ * Marks the loaded cartons the warehouse has scanned in: each product's label list once, then, one by one, the labels too
+ * old to be in it (the list holds a product's newest 50 only).
+ */
 async function receive(db: SupabaseClient): Promise<string> {
   const { data, error } = await db.rpc("supplier_receive_plan");
   if (error) throw new Error(`Reading the cartons on their way: ${error.message}`);
   const waits = (data ?? []) as Wait[];
-  const arrived: string[] = [];
-  if (waits.length) {
-    const inventory = await api();
-    for (const w of waits) {
-      const states = new Map((await inventory.states(w.sku, w.warehouse_vid)).map((l) => [l.serial, l.state]));
-      for (const serial of w.serials) if (hasArrived(states.get(serial) ?? "")) arrived.push(serial);
-    }
-  }
+  let found: Awaited<ReturnType<typeof findArrivals>> = { arrived: [], lookedUp: 0, unknown: 0, otherWarehouse: 0, failed: 0, left: 0 };
+  if (waits.length) found = await findArrivals(waits, await api());
   // Called even with nothing arrived: it also flags dispatches that are overdue.
-  const { data: saved, error: saveError } = await db.rpc("supplier_receive_save", { p_serials: arrived });
+  const { data: saved, error: saveError } = await db.rpc("supplier_receive_save", { p_serials: found.arrived });
   if (saveError) throw new Error(`Saving the arrivals: ${saveError.message}`);
-  return `waiting on ${waits.reduce((n, w) => n + w.serials.length, 0)} cartons; ${JSON.stringify(saved)}`;
+  const { lookedUp, unknown, otherWarehouse, failed, left } = found;
+  return (
+    `waiting on ${waits.reduce((n, w) => n + w.serials.length, 0)} cartons; ` +
+    `looked up ${lookedUp} older labels one by one (unknown ${unknown}, other warehouse ${otherWarehouse}, failed ${failed}, left for the next run ${left}); ` +
+    JSON.stringify(saved)
+  );
 }
 
 Deno.serve(async (req: Request) => {

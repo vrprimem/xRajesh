@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createLabelsClient, hasArrived, LabelsApiError, safeSvg } from "./labels-api.ts";
+import { createLabelsClient, findArrivals, hasArrived, LabelsApiError, safeSvg, type LookedUp } from "./labels-api.ts";
 
 type Call = { method: string; url: string; body: unknown; auth: string | undefined };
 
@@ -60,7 +60,7 @@ test("reads label states, as a plain list or as a page", async () => {
   }
 });
 
-test("only ever sends the three allowed requests", async () => {
+test("only ever sends the four allowed requests", async () => {
   const server = fakeServer({ "POST /auth/login/": { body: { access: "t" } } });
   const api = client(server);
   await api.login();
@@ -71,8 +71,78 @@ test("only ever sends the three allowed requests", async () => {
   await assert.rejects(api.print("X", "1", 51, 10), /1 to 50/);
   await assert.rejects(api.print("X", "1", 0, 10), /1 to 50/);
   await assert.rejects(api.print("X", "1", 5, 0), /whole number/);
-  const sent = server.calls.map((c) => `${c.method} ${c.url.replace("https://api.test/api", "").replace(/\/products\/[^/]+\//, "/products/{sku}/")}`);
-  for (const s of sent) assert.ok(["POST /auth/login/", "POST /products/{sku}/carton-labels/", "GET /products/{sku}/carton-labels/?warehouse_id=1"].includes(s), s);
+  // A label number is 16 digits and nothing else: no other address or extra query can ride along.
+  for (const bad of ["101000076080882", "1010000760808823&x=1", "../scan/?b=1010000760808823", ""]) await assert.rejects(api.lookup(bad), /16 digits/);
+  assert.equal(await api.lookup("1010000760808823"), null, "unknown to the inventory software (404)");
+  const sent = server.calls.map((c) => `${c.method} ${c.url.replace("https://api.test/api", "").replace(/\/products\/[^/]+\//, "/products/{sku}/").replace(/\?b=\d{16}$/, "?b={serial}")}`);
+  for (const s of sent) assert.ok(["POST /auth/login/", "POST /products/{sku}/carton-labels/", "GET /products/{sku}/carton-labels/?warehouse_id=1", "GET /barcodes/lookup/?b={serial}"].includes(s), s);
+  assert.ok(sent.every((s) => !s.includes("POST /barcodes")), "never a scan");
+});
+
+test("looks up one label by its number: its state and warehouse", async () => {
+  const serial = "1010000760808823";
+  const server = fakeServer({
+    "POST /auth/login/": { body: { access: "t" } },
+    [`GET /barcodes/lookup/?b=${serial}`]: { body: { cartonLabel: { serial, state: "inbound", warehouseId: 1, qtyPerCarton: 80 }, product: { sku: "OLD-RAT" } } },
+    "GET /barcodes/lookup/?b=1010000760800000": { body: { cartonLabel: null, product: { sku: "OLD-RAT" } } },
+    "GET /barcodes/lookup/?b=1010000760800001": { body: { cartonLabel: { serial: "1010000760809999", state: "inbound" } } },
+  });
+  const api = client(server);
+  await api.login();
+  assert.deepEqual(await api.lookup(serial), { serial, state: "inbound", warehouseVid: "1" });
+  assert.equal(server.calls[1].method, "GET");
+  assert.equal(server.calls[1].body, undefined, "a read sends nothing");
+  assert.equal(await api.lookup("1010000760800000"), null, "a product, not a carton label");
+  assert.equal(await api.lookup("1010000760800001"), null, "a reply about another label");
+});
+
+// Old Rat: 60 labels, #119 to #178. The product's list holds only its newest 50 (#129 to #178).
+const RAT = Array.from({ length: 60 }, (_, i) => `10100007608${String(10000 + i).slice(1)}`);
+
+function fakeInventory(states: Map<string, string>, looked: Map<string, LookedUp | null | Error>) {
+  const lookups: string[] = [];
+  return {
+    lookups,
+    inventory: {
+      states: async () => RAT.slice(10).map((serial) => ({ serial, state: states.get(serial) ?? "printed" })),
+      lookup: async (serial: string) => {
+        lookups.push(serial);
+        if (!looked.has(serial)) return { serial, state: "printed", warehouseVid: "1" };
+        const hit = looked.get(serial);
+        if (hit instanceof Error) throw hit;
+        return hit ?? null;
+      },
+    },
+  };
+}
+const keep = <T,>(list: T[]) => list;
+
+test("arrivals: cartons too old for the product's list of 50 are looked up one by one", async () => {
+  const states = new Map(RAT.slice(10).map((s, i) => [s, i < 45 ? "inbound" : "printed"]));
+  const looked = new Map<string, LookedUp | null | Error>([
+    [RAT[0], { serial: RAT[0], state: "inbound", warehouseVid: "1" }],
+    [RAT[1], { serial: RAT[1], state: "outbound", warehouseVid: null }],
+    [RAT[2], { serial: RAT[2], state: "inbound", warehouseVid: "2" }],
+    [RAT[3], null],
+    [RAT[4], new LabelsApiError("timeout")],
+    [RAT[5], { serial: RAT[5], state: "retired", warehouseVid: "1" }],
+  ]);
+  const { inventory, lookups } = fakeInventory(states, looked);
+  const found = await findArrivals([{ warehouse_vid: "1", sku: "OLD-RAT", serials: RAT }], inventory, { order: keep });
+  assert.deepEqual(lookups.sort(), RAT.slice(0, 10).sort(), "only the 10 not in the list, each once");
+  assert.equal(found.arrived.length, 45 + 2, "45 from the list, 2 looked up");
+  assert.ok(found.arrived.includes(RAT[0]) && found.arrived.includes(RAT[1]));
+  assert.ok(!found.arrived.includes(RAT[2]), "scanned in at another warehouse");
+  assert.deepEqual([found.lookedUp, found.unknown, found.otherWarehouse, found.failed, found.left], [10, 1, 1, 1, 0]);
+});
+
+test("arrivals: lookups stop at the limit and the rest wait for the next run", async () => {
+  const { inventory, lookups } = fakeInventory(new Map(), new Map());
+  const found = await findArrivals([{ warehouse_vid: "1", sku: "OLD-RAT", serials: RAT }], inventory, { maxLookups: 4, parallel: 2 });
+  assert.equal(lookups.length, 4);
+  assert.deepEqual([found.lookedUp, found.left, found.arrived.length], [4, 6, 0]);
+  const none = await findArrivals([], inventory);
+  assert.deepEqual(none, { arrived: [], lookedUp: 0, unknown: 0, otherWarehouse: 0, failed: 0, left: 0 });
 });
 
 test("a bad reply is an error, never a guess", async () => {

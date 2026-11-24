@@ -3,17 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
+import { AddProducts } from "@/components/supplier/dispatch-edit";
 import { LabelGroups } from "@/components/supplier/label-groups";
 import { WithPhoto } from "@/components/supplier/product-photo";
 import { useToast } from "@/components/toast";
 import { Card, Chip, SectionHead, buttonClass } from "@/components/ui";
+import { cartonRanges, labelParts, labelsToDownload, loadedKg, partSummary, plannedKg } from "@/lib/dispatch-view";
 import { formatDate, formatDateTime, formatNumber, noun } from "@/lib/format";
 import { safeError } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/client";
 import { DISPATCH_STATUS_LABEL, dispatchCounts, labelsOwed, pendingKey, readPending, type DispatchStatus } from "@/lib/supplier";
 import { cancelDispatch, closeDispatch, receiveDispatch, requestLabels, setDispatchPhoto, voidUnusedLabels } from "@/server/actions/supplier";
 import type { ActionResult } from "@/lib/types";
-import type { DispatchDetail } from "@/server/supplier-data";
+import type { DispatchDetail, ProductRow } from "@/server/supplier-data";
 
 // The stage colours: amber while it is to load, blue on the way, green once arrived, grey when cancelled.
 const STATUS_TONE: Record<DispatchStatus, "neutral" | "info" | "warn" | "ok" | "bad"> = { planned: "warn", loading: "warn", closed: "info", received: "ok", cancelled: "neutral" };
@@ -42,8 +44,9 @@ function CartonCounter({ planned, loaded, left }: { planned: number; loaded: num
  *   who = "owner"    the supplier owner: everything, including cancelling a plan
  *   who = "scanner"  the supplier's warehouse person: scan, labels, photo, close
  *   who = "vrprime"  VRPRIME owner and admin: read, and mark a closed dispatch received
+ * `products`: the supplier's products, for adding more to a dispatch still being loaded (the owner only).
  */
-export function DispatchPanel({ detail, who, base, photos = {} }: { detail: DispatchDetail; who: "owner" | "scanner" | "vrprime"; base: string; photos?: Record<string, string> }) {
+export function DispatchPanel({ detail, who, base, photos = {}, products = [] }: { detail: DispatchDetail; who: "owner" | "scanner" | "vrprime"; base: string; photos?: Record<string, string>; products?: ProductRow[] }) {
   const { dispatch: d, lines, cartons, photoUrl } = detail;
   const router = useRouter();
   const toast = useToast();
@@ -58,8 +61,11 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
   const made = counts.planned - owed;
   const arrived = cartons.filter((c) => c.inbound_status === "received").length;
   const supplierSide = who !== "vrprime";
-  // What the loaded cartons weigh, by their labels (cartons with no weight on the label are left out).
-  const loadedKg = Math.round(cartons.filter((c) => c.status === "loaded").reduce((sum, c) => sum + (c.weight_per_carton ?? 0), 0) * 10) / 10;
+  // The labels to download, in parts when a product has more than 50 (one part otherwise).
+  const parts = d.status === "cancelled" ? [] : labelParts(labelsToDownload(cartons, open));
+  // What the loaded cartons weigh, by their labels; what the plan weighs, by its lines (cartons with no weight left out).
+  const loaded = loadedKg(cartons);
+  const planned = plannedKg(lines);
   const run = (action: () => Promise<ActionResult>, confirmText?: string) => {
     if (confirmText && !window.confirm(confirmText)) return;
     startTransition(async () => {
@@ -120,7 +126,7 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
         </div>
         <p className="mt-3 text-[15px]">
           <span className="font-semibold tabular-nums">{formatNumber(counts.units)}</span> {noun(counts.units, "unit")} loaded
-          {loadedKg ? ` · ${formatNumber(loadedKg)} kg` : ""}
+          {open && planned.kg ? ` · ${formatNumber(loaded.kg)} of ${formatNumber(planned.kg)} kg` : loaded.kg ? ` · ${formatNumber(loaded.kg)} kg` : ""}
           {counts.voided ? ` · ${formatNumber(counts.voided)} ${counts.voided === 1 ? "label" : "labels"} void` : ""}
           {!open && d.status !== "cancelled" && counts.loaded ? ` · ${formatNumber(arrived)} of ${formatNumber(counts.loaded)} scanned in at VRPRIME` : ""}
         </p>
@@ -150,14 +156,14 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
           </div>
         ) : null}
 
-        {(open && supplierSide) || (d.status !== "cancelled" && cartons.length > 0) ? (
+        {(open && supplierSide) || parts.length === 1 ? (
           <div className="mt-4 flex flex-wrap gap-2">
             {open && supplierSide ? (
               <Link href={`${base}/${d.id}/scan`} className={buttonClass("primary")}>
                 Scan cartons
               </Link>
             ) : null}
-            {cartons.length > 0 && d.status !== "cancelled" ? (
+            {parts.length === 1 ? (
               <>
                 {/* Plain links: the browser downloads the PDF (a Link would try to open it as a page). */}
                 <a href={`${base}/${d.id}/labels`} download className={buttonClass(open && supplierSide ? "outline" : "primary")}>
@@ -170,9 +176,48 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
             ) : null}
           </div>
         ) : null}
-        {cartons.length > 0 && d.status !== "cancelled" ? (
+        {parts.length > 1 ? (
+          <div className="mt-4">
+            <p className="text-[15px] font-semibold">Download the labels in {parts.length} parts</p>
+            <p className="t-caption mt-0.5">The VRPRIME inventory software makes at most 50 labels of a product at a time, so a product&apos;s labels after its 50th come in the next part.</p>
+            <ul className="mt-2 divide-y divide-line-soft rounded-[12px] border border-frame">
+              {parts.map((p) => {
+                const what = partSummary(p);
+                return (
+                  <li key={p.part} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 py-2.5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">
+                        Part {p.part}: {formatNumber(p.labels.length)} {noun(p.labels.length, "label")}
+                      </span>
+                      <span className="block text-[14px] text-muted">
+                        {what.charAt(0).toUpperCase() + what.slice(1)} · cartons{" "}
+                        {cartonRanges(p.labels.map((c) => c.carton_no))
+                          .split(", ")
+                          .map((run, i) => (
+                            <span key={run} className="whitespace-nowrap">
+                              {i ? ", " : ""}
+                              {run}
+                            </span>
+                          ))}
+                      </span>
+                    </span>
+                    <span className="flex w-full flex-wrap gap-2 min-[700px]:w-auto">
+                      <a href={`${base}/${d.id}/labels?part=${p.part}`} download className={buttonClass("row")} aria-label={`Download part ${p.part}, ${p.labels.length} labels, 100 by 75 millimetres`}>
+                        Download (PDF)
+                      </a>
+                      <a href={`${base}/${d.id}/labels?part=${p.part}&format=a4`} download className={buttonClass("row")} aria-label={`Download part ${p.part} on A4 sheets`}>
+                        A4 sheet
+                      </a>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+        {parts.length ? (
           <p className="t-caption mt-2">
-            {open ? "Labels still to scan." : "Every label of the dispatch."} The first is one label per page, 100 × 75 mm, for a label printer. The A4 sheet fits
+            {open ? "Labels still to scan." : "Every label of the dispatch."} The PDF is one label per page, 100 × 75 mm, for a label printer. The A4 sheet fits
             2 × 8 labels of 99.1 × 33.9 mm: print at actual size (100%), not &quot;fit to page&quot;.
           </p>
         ) : null}
@@ -250,26 +295,63 @@ export function DispatchPanel({ detail, who, base, photos = {} }: { detail: Disp
         <table className="ledger">
           <thead>
             <tr>
-              <th scope="col" className="min-w-[170px]">Product</th>
-              <th scope="col" className="num">Units / carton</th>
+              <th scope="col" className="min-w-[130px]">Product</th>
               <th scope="col" className="num">Cartons</th>
-              <th scope="col" className="num">Units</th>
+              <th scope="col" className="num">Weight</th>
             </tr>
           </thead>
           <tbody>
-            {lines.map((l) => (
-              <tr key={`${l.product_id}-${l.carton_type}`}>
-                <th scope="row" className="text-left font-semibold">
-                  <WithPhoto src={photos[l.product_id]} name={l.product} />
-                </th>
-                <td className="num tabular-nums">{formatNumber(l.units_per_carton)}</td>
-                <td className="num tabular-nums">{formatNumber(l.cartons)}</td>
-                <td className="num tabular-nums">{formatNumber(l.cartons * l.units_per_carton)}</td>
-              </tr>
-            ))}
+            {lines.map((l) => {
+              const kg = plannedKg([l]);
+              return (
+                <tr key={`${l.product_id}-${l.carton_type}`}>
+                  <th scope="row" className="py-2 text-left font-semibold">
+                    <WithPhoto src={photos[l.product_id]} name={l.product}>
+                      <span className="block">{l.product}</span>
+                      <span className="block text-[14px] font-normal text-muted">{formatNumber(l.units_per_carton)} pieces a carton</span>
+                    </WithPhoto>
+                  </th>
+                  <td className="num py-2">
+                    <span className="block">{formatNumber(l.cartons)}</span>
+                    <span className="block text-[14px] font-normal text-muted">{formatNumber(l.cartons * l.units_per_carton)} units</span>
+                  </td>
+                  <td className="num py-2">
+                    {kg.kg ? (
+                      <>
+                        <span className="block whitespace-nowrap">{formatNumber(kg.kg)} kg</span>
+                        <span className="block text-[14px] font-normal text-muted">{formatNumber(Number(l.weight_per_carton))} kg each</span>
+                      </>
+                    ) : (
+                      <span className="block text-[14px] font-normal text-muted">No weight</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
+          {lines.length > 1 ? (
+            <tfoot>
+              <tr>
+                <th scope="row" className="border-t border-frame px-3 py-2 text-left">
+                  Total
+                </th>
+                <td className="num border-t border-frame px-3 py-2 font-bold">
+                  <span className="block">{formatNumber(lines.reduce((n, l) => n + l.cartons, 0))}</span>
+                  <span className="block text-[14px] font-normal text-muted">{formatNumber(lines.reduce((n, l) => n + l.cartons * l.units_per_carton, 0))} units</span>
+                </td>
+                <td className="num border-t border-frame px-3 py-2 font-bold whitespace-nowrap">{planned.kg ? `${formatNumber(planned.kg)} kg` : "-"}</td>
+              </tr>
+            </tfoot>
+          ) : null}
         </table>
+        {planned.kg && planned.unweighed ? (
+          <p className="t-caption g-pad pt-2">
+            {formatNumber(planned.unweighed)} {noun(planned.unweighed, "carton")} with no weight {planned.unweighed === 1 ? "is" : "are"} not in the total.
+          </p>
+        ) : null}
       </Card>
+
+      {open && who === "owner" ? <AddProducts dispatchId={d.id} products={products} lines={lines} photos={photos} /> : null}
 
       <LabelGroups dispatchId={d.id} base={base} lines={lines} cartons={cartons} canChange={open && supplierSide} photos={photos} />
     </div>
