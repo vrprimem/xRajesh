@@ -9,7 +9,7 @@ import type { CartonType, DispatchStatus, ProduceStatus, ProductCategory } from 
 
 // The tables are newer than the generated types.
 type Loose = { from: (table: string) => any; rpc: (fn: string, args?: Record<string, unknown>) => any; storage: Awaited<ReturnType<typeof createClient>>["storage"] }; // eslint-disable-line @typescript-eslint/no-explicit-any
-type DbErr = { code?: string; message?: string } | null;
+export type DbErr = { code?: string; message?: string } | null;
 
 export const supplierDb = async (): Promise<Loose> => (await createClient()) as unknown as Loose;
 
@@ -87,7 +87,7 @@ export type ProduceRow = {
   responded_at: string | null;
 };
 
-const soft = <T,>(what: string, error: DbErr, data: T | null, fallback: T): T => {
+export const soft = <T,>(what: string, error: DbErr, data: T | null, fallback: T): T => {
   if (error && !notInstalled(error)) logError(`supplier ${what}`, error);
   return data ?? fallback;
 };

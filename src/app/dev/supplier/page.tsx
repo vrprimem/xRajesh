@@ -4,20 +4,27 @@ import { DispatchList, MonthCartons } from "@/components/supplier/dispatch-list"
 import AuthLayout from "@/app/(auth)/layout";
 import { SignInDoor } from "@/components/auth/sign-in-door";
 import { PortalShell } from "@/components/portal-shell";
+import { DeliveryPlans } from "@/components/supplier/delivery-plans";
 import { DispatchForm } from "@/components/supplier/dispatch-form";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
 import { FactoryReset } from "@/components/supplier/factory-reset";
 import { Label, LABEL_CSS } from "@/components/supplier/label";
+import { MoneyPanel } from "@/components/supplier/money-panel";
+import { OutputChart } from "@/components/supplier/output-chart";
 import { PlanForm } from "@/components/supplier/plan-form";
 import { PlanList } from "@/components/supplier/plan-list";
 import { ProduceList } from "@/components/supplier/produce-list";
+import { ProductionForm, ProductionLog, ReadyStockTable, RecipeEditor } from "@/components/supplier/production-panel";
 import { ProductsPanel } from "@/components/supplier/products-panel";
 import { Scanner } from "@/components/supplier/scanner";
 import { StockTable } from "@/components/supplier/stock-table";
 import { StaffLogins, SupplierLogins } from "@/components/supplier/supplier-admin";
+import { SuppliesPanel } from "@/components/supplier/supplies-panel";
 import { SyncCard } from "@/components/supplier/sync-card";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import type { CartonType } from "@/lib/supplier";
+import { PHONE_LINKS, supplierLinks } from "@/lib/supplier-nav";
+import { factorySample } from "./factory-sample";
 import type { CartonRow, DispatchDetail, DispatchSummary, PlanRow, ProduceRow, ProductRow, StockRow } from "@/server/supplier-data";
 
 // The supplier portal's screens with fake data and no login, for checking layout at 360px, in dark mode and in print.
@@ -112,13 +119,17 @@ const PLANS: PlanRow[] = [
   ] },
 ];
 
-const VIEWS = ["home", "newdispatch", "dispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
+const VIEWS = ["home", "production", "supplies", "money", "more", "delivery", "newdispatch", "dispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
+
+const PREVIEW_HREF: Record<string, string> = { "/supplier": "/dev/supplier", "/supplier/production": "/dev/supplier?view=production", "/supplier/dispatches": "/dev/supplier?view=dispatch", "/supplier/money": "/dev/supplier?view=money", "/supplier/supplies": "/dev/supplier?view=supplies", "/supplier/products": "/dev/supplier?view=products", "/supplier/reports": "/dev/supplier?view=vrprime", "/supplier/alerts": "/dev/supplier?view=plan" };
 
 export default async function SupplierPreviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (process.env.NODE_ENV !== "development") notFound();
   const sp = await searchParams;
   const view = VIEWS.find((v) => v === sp.view) ?? "home";
   const who = sp.who === "scanner" ? "scanner" : "owner";
+  const f = factorySample(PLANS.map((p) => ({ id: p.id, number: p.number, due_on: p.due_on, lines: p.lines })));
+  const navLinks = supplierLinks(who === "owner" ? "supplier_owner" : "supplier_scanner", 3).map((l) => ({ ...l, href: PREVIEW_HREF[l.href] ?? l.href }));
 
   if (view === "signin") {
     return (
@@ -133,13 +144,8 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       home="/dev/supplier"
       title="Rajesh Industries"
       sub="VRPRIME supplier portal · Rajesh"
-      links={[
-        { href: "/dev/supplier", label: "Home" },
-        { href: "/dev/supplier?view=dispatch", label: "Dispatches" },
-        { href: "/dev/supplier?view=products", label: "Products" },
-        { href: "/dev/supplier?view=vrprime", label: "Reports" },
-        { href: "/dev/supplier?view=plan", label: "Alerts", badge: 3 },
-      ]}
+      links={navLinks}
+      more="/dev/supplier?view=more"
     >
       <nav className="mb-4 flex flex-wrap gap-2 print:hidden" aria-label="Preview">
         {VIEWS.map((v) => (
@@ -163,6 +169,65 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
           <MonthCartons dispatches={DISPATCHES} />
           <DispatchList dispatches={DISPATCHES} base="/dev/supplier" who={who} photos={PHOTOS} warehouse="Bhiwandi" emptyBody="" />
           <StockTable rows={STOCK} canSetMin={false} />
+        </div>
+      ) : null}
+
+      {view === "production" ? (
+        <div className="flex flex-col gap-4">
+          <PageTitle title="Production" sub="Today 480 units · last 7 days 6,970" />
+          <ProductionForm products={f.ready} today={f.today} />
+          <Card className="g-pad">
+            <SectionHead title="Made each day" sub="Units of all products, the last 14 days." />
+            <OutputChart days={f.days} today={f.today} title="Units made each day, the last 14 days" />
+          </Card>
+          <DeliveryPlans estimates={f.estimates} today={f.today} empty="No open send plan from VRPRIME right now." />
+          <ReadyStockTable rows={f.ready} canCount />
+          <ProductionLog entries={f.entries} products={f.ready} today={f.today} canRemove />
+          <RecipeEditor products={f.ready} items={f.items} recipes={f.recipes} canEdit={who === "owner"} />
+        </div>
+      ) : null}
+
+      {view === "supplies" ? (
+        <>
+          <PageTitle title="Supplies" sub="9 in use · 2 running low" />
+          <SuppliesPanel supplierId={SUPPLIER} items={f.items} moves={f.moves} daysLeft={f.daysLeft} canEdit={who === "owner"} canCount />
+        </>
+      ) : null}
+
+      {view === "money" ? (
+        <>
+          <PageTitle title="Money" sub="This month · only you see this page" />
+          <MoneyPanel month={f.month} data={f.money} totals={f.totals} sheet={f.sheet} items={f.items} today={f.today} />
+        </>
+      ) : null}
+
+      {view === "more" ? (
+        <>
+          <PageTitle title="More" />
+          <ul className="grid gap-3 min-[520px]:grid-cols-2">
+            {navLinks.slice(PHONE_LINKS).map((l) => (
+              <li key={l.href}>
+                <Link href={l.href} className="sp-card focus-ring flex min-h-16 items-center justify-between gap-3 px-5 py-4 text-[20px] font-extrabold hover:bg-surface2">
+                  {l.label}
+                  <span aria-hidden>→</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {view === "delivery" ? (
+        <div className="flex flex-col gap-4">
+          <PageTitle title="Rajesh Industries: production" sub="Today 480 units · last 7 days 6,970 · as the supplier enters it" />
+          <Card className="g-pad">
+            <SectionHead title="Made each day" sub="Units of all products, the last 14 days." />
+            <OutputChart days={f.days} today={f.today} title="Units made each day, the last 14 days" />
+          </Card>
+          <DeliveryPlans estimates={f.estimates} today={f.today} empty="No open send plan." />
+          <ReadyStockTable rows={f.ready} canCount={false} />
+          <ProductionLog entries={f.entries} products={f.ready} today={f.today} canRemove={false} />
+          <SuppliesPanel supplierId={SUPPLIER} items={f.items} moves={f.moves} daysLeft={f.daysLeft} canEdit={false} canCount={false} />
         </div>
       ) : null}
 

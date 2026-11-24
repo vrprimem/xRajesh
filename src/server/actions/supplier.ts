@@ -1,56 +1,19 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { canManage, getActiveUser, getPortalUser } from "@/lib/auth";
+import { canManage, getActiveUser } from "@/lib/auth";
 import { PHOTO_FILE } from "@/lib/photos";
-import { logError, redactSecrets } from "@/lib/redact";
+import { logError } from "@/lib/redact";
 import { adminErrorMessage, getAdmin } from "@/lib/supabase/admin";
 import { MAX_PRODUCT_ROWS, PRODUCT_CATEGORIES, isCartonBarcode, type ProductInput, type ScanAnswer } from "@/lib/supplier";
 import { SUPPLIER_ROLES, type ActionResult } from "@/lib/types";
 import { fieldErrors } from "@/lib/validation";
 import { NOT_SIGNED_IN } from "@/server/action-helpers";
+import { NOT_ALLOWED, UUID, actor, failed, idOf as id, refresh, supplierFor } from "@/server/supplier-actor";
 import { supplierDb } from "@/server/supplier-data";
 
 // The supplier portal's actions. Two kinds of people call them: a supplier login (its own supplier only) and VRPRIME's
 // owner and admin (any supplier). Each action works out who is calling here, and every database function checks again.
-
-const UUID = z.uuid();
-
-type Actor = { supplierOnly: string | null; isOwner: boolean; scanner: boolean };
-
-/** Who is calling. `supplierOnly` is the one supplier a supplier login may touch; null for VRPRIME owner and admin. */
-async function actor(): Promise<Actor | null> {
-  const portal = await getPortalUser();
-  if (portal) return { supplierOnly: portal.supplierId, isOwner: false, scanner: portal.role === "supplier_scanner" };
-  const user = await getActiveUser();
-  if (user && canManage(user)) return { supplierOnly: null, isOwner: user.role === "owner", scanner: false };
-  return null;
-}
-
-/** The supplier an action is about: a supplier login always gets its own, whatever was sent. */
-function supplierFor(who: Actor, sent: unknown): string | null {
-  if (who.supplierOnly) return who.supplierOnly;
-  return UUID.safeParse(sent).success ? (sent as string) : null;
-}
-
-const NOT_ALLOWED: ActionResult<never> = { ok: false, message: "You do not have access to do that." };
-
-/** A database refusal as a message. The functions raise plain sentences (code 22023) that are safe to show. */
-function failed(error: { message: string; code?: string }, what: string): ActionResult<never> {
-  if (error.code === "PGRST202" || error.code === "42883") return { ok: false, message: "The database is not set up yet (see SETUP.md)." };
-  if (error.code === "42501") return NOT_ALLOWED;
-  if (error.code === "22023") {
-    const text = redactSecrets(error.message);
-    return { ok: false, message: text.charAt(0).toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? "" : ".") };
-  }
-  logError(`supplier ${what}`, error);
-  return { ok: false, message: `Could not ${what}. Check your connection and try again.` };
-}
-
-function refresh() {
-  revalidatePath("/", "layout");
-}
 
 // ---- Products ------------------------------------------------------------------------------------------------------------
 
@@ -139,8 +102,6 @@ async function step(fn: string, args: Record<string, unknown>, what: string, don
   refresh();
   return { ok: true, message: done };
 }
-
-const id = (v: unknown): string | null => (UUID.safeParse(v).success ? (v as string) : null);
 
 export async function voidCarton(cartonId: unknown, reason: unknown): Promise<ActionResult> {
   const carton = id(cartonId);
