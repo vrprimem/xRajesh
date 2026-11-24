@@ -18,7 +18,7 @@ import { StaffLogins, SupplierLogins } from "@/components/supplier/supplier-admi
 import { SyncCard } from "@/components/supplier/sync-card";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import type { DispatchDetail, DispatchSummary, PlanRow, ProduceRow, StockRow } from "@/server/supplier-data";
-import { BIG_DETAIL, BIG_PRODUCTS, DETAIL, DISPATCH, PRODUCTS, SUPPLIER, pid } from "./sample";
+import { BIG_DETAIL, BIG_PRODUCTS, DETAIL, DISPATCH, PRODUCTS, SENT_DETAIL, SUPPLIER, pid } from "./sample";
 
 // The supplier portal's screens with fake data and no login, for checking layout at 360px, in dark mode and in print.
 // Development only: 404 in production. Buttons that save will fail here (there is no database behind them).
@@ -75,7 +75,7 @@ const PLANS: PlanRow[] = [
   ] },
 ];
 
-const VIEWS = ["home", "newdispatch", "dispatch", "bigdispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
+const VIEWS = ["home", "newdispatch", "dispatch", "bigdispatch", "sentdispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
 
 export default async function SupplierPreviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (process.env.NODE_ENV !== "development") notFound();
@@ -147,6 +147,13 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
         <>
           <PageTitle title="Dispatch 8" />
           <DispatchPanel detail={BIG_DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} products={BIG_PRODUCTS} />
+        </>
+      ) : null}
+
+      {view === "sentdispatch" ? (
+        <>
+          <PageTitle title="Dispatch 9" />
+          <DispatchPanel detail={SENT_DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} products={BIG_PRODUCTS} />
         </>
       ) : null}
 

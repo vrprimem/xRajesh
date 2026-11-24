@@ -66,6 +66,8 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
   // What the loaded cartons weigh, by their labels; what the plan weighs, by its lines (cartons with no weight left out).
   const loaded = loadedKg(cartons);
   const planned = plannedKg(lines);
+  // Once it has left, BIGICON's stock receipt challan is filled in from what was loaded and when it was closed.
+  const sent = (d.status === "closed" || d.status === "received") && counts.loaded > 0;
   const run = (action: () => Promise<ActionResult>, confirmText?: string) => {
     if (confirmText && !window.confirm(confirmText)) return;
     startTransition(async () => {
@@ -156,17 +158,22 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
           </div>
         ) : null}
 
-        {(open && supplierSide) || parts.length === 1 ? (
+        {(open && supplierSide) || parts.length === 1 || sent ? (
           <div className="mt-4 flex flex-wrap gap-2">
             {open && supplierSide ? (
               <Link href={`${base}/${d.id}/scan`} className={buttonClass("primary")}>
                 Scan cartons
               </Link>
             ) : null}
+            {/* Plain links: the browser downloads the PDF (a Link would try to open it as a page). */}
+            {sent ? (
+              <a href={`${base}/${d.id}/challan`} download className={buttonClass("primary")}>
+                Download challan (PDF)
+              </a>
+            ) : null}
             {parts.length === 1 ? (
               <>
-                {/* Plain links: the browser downloads the PDF (a Link would try to open it as a page). */}
-                <a href={`${base}/${d.id}/labels`} download className={buttonClass(open && supplierSide ? "outline" : "primary")}>
+                <a href={`${base}/${d.id}/labels`} download className={buttonClass((open && supplierSide) || sent ? "outline" : "primary")}>
                   Download labels (PDF)
                 </a>
                 <a href={`${base}/${d.id}/labels?format=a4`} download className={buttonClass("outline")}>
@@ -215,6 +222,12 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
             </ul>
           </div>
         ) : null}
+        {sent ? (
+          <p className="t-caption mt-2">
+            The challan is BIGICON&apos;s stock receipt challan with every product sent (full cartons, pieces a carton, loose pieces and the total) and the
+            day and time the dispatch was closed. The challan numbers, job code, tempo number and signature are written by hand.
+          </p>
+        ) : null}
         {parts.length ? (
           <p className="t-caption mt-2">
             {open ? "Labels still to scan." : "Every label of the dispatch."} The PDF is one label per page, 100 × 75 mm, for a label printer. The A4 sheet fits
@@ -225,7 +238,7 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
 
       {open && supplierSide ? (
         <Card className="g-pad">
-          <SectionHead title="Close the dispatch" sub="All three are needed. Closing locks the record." />
+          <SectionHead title="Close the dispatch" sub="All three are needed. Closing locks the record; then download the challan to send with the tempo." />
           <ul className="flex flex-col gap-1.5 text-[15px]">
             {steps.map((s) => (
               <li key={s.text} className="flex items-start gap-2">
