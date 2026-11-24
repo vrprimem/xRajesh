@@ -82,5 +82,16 @@ function bigDetail(): DispatchDetail {
 
 export const BIG_DETAIL = bigDetail();
 
-/** The sample dispatches whose labels the preview can download. */
-export const SAMPLE_DISPATCHES: Record<string, DispatchDetail> = { [DISPATCH]: DETAIL, [BIG_DISPATCH]: BIG_DETAIL };
+/** The same dispatch once loaded and sent at 2:34 pm: every carton loaded, one Old Rat carton packed with 40 pieces. */
+export const SENT_DISPATCH = "00000000-0000-4000-8000-0000000000d3";
+export const SENT_DETAIL: DispatchDetail = {
+  ...BIG_DETAIL,
+  dispatch: { ...BIG_DETAIL.dispatch, id: SENT_DISPATCH, number: 9, status: "closed", closed_at: "2026-11-24T09:04:00Z", note: "Sample: sent at 2:34 pm", vehicle_photo_path: "x.jpg" },
+  cartons: BIG_DETAIL.cartons.map((c) => ({ ...c, status: "loaded" as const, loaded_at: "2026-11-24T08:50:00Z", units: c.carton_no === 178 ? 40 : c.units })),
+};
+
+/** Every sample product, with its master SKU (for the challan). */
+export const SAMPLE_PRODUCTS: ProductRow[] = [...PRODUCTS, ...BIG_PRODUCTS];
+
+/** The sample dispatches whose labels and challan the preview can download. */
+export const SAMPLE_DISPATCHES: Record<string, DispatchDetail> = { [DISPATCH]: DETAIL, [BIG_DISPATCH]: BIG_DETAIL, [SENT_DISPATCH]: SENT_DETAIL };
