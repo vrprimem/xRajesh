@@ -8,7 +8,7 @@ import { useToast } from "@/components/toast";
 import { Chip, buttonClass } from "@/components/ui";
 import { formatDate, formatNumber, noun, todayIST } from "@/lib/format";
 import { PLAN_STATUS_LABEL, type PlanStatus } from "@/lib/supplier";
-import { cancelPlan, planToDispatch, respondPlan } from "@/server/actions/supplier";
+import { cancelPlan, deletePlan, planToDispatch, respondPlan } from "@/server/actions/supplier";
 import type { PlanRow } from "@/server/supplier-data";
 
 const TONE: Record<PlanStatus, "neutral" | "info" | "warn" | "ok" | "bad"> = { open: "warn", accepted: "info", in_production: "info", ready: "ok", dispatched: "ok", cancelled: "bad" };
@@ -22,7 +22,7 @@ const ANSWERS: { status: "accepted" | "in_production" | "ready"; label: string }
  * Send plans with their products and cartons.
  *   who = "owner"    the supplier's owner: answer, and make the dispatch when ready
  *   who = "scanner"  the supplier's warehouse person: read only
- *   who = "vrprime"  VRPRIME: read the answers, cancel
+ *   who = "vrprime"  VRPRIME: read the answers, cancel, delete for good
  * \`dispatchBase\` is where this person's dispatches live.
  */
 export function PlanList({ plans, who, dispatchBase, photos = {} }: { plans: PlanRow[]; who: "owner" | "scanner" | "vrprime"; dispatchBase: string; photos?: Record<string, string> }) {
@@ -125,6 +125,22 @@ export function PlanList({ plans, who, dispatchBase, photos = {} }: { plans: Pla
                   className={buttonClass("danger")}
                 >
                   Cancel plan
+                </button>
+              ) : null}
+              {who === "vrprime" ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    const after = live ? " The supplier is told not to make it." : p.status === "dispatched" ? " The dispatch made from it stays as it is." : "";
+                    if (!window.confirm(`Delete send plan ${p.number} for good? It cannot be brought back.${after}`)) return;
+                    startTransition(async () => {
+                      if (toast.result(await deletePlan(p.id))) router.refresh();
+                    });
+                  }}
+                  className={buttonClass("outline", "text-bad")}
+                >
+                  Delete permanently
                 </button>
               ) : null}
             </div>

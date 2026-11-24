@@ -148,6 +148,28 @@ export async function cancelDispatch(dispatchId: unknown): Promise<ActionResult>
   return step("supplier_dispatch_cancel", { p_dispatch: dispatch }, "cancel the dispatch", "Dispatch cancelled", true);
 }
 
+const addLinesSchema = dispatchSchema.shape.lines;
+
+/**
+ * More products, or more cartons of a product already on it, for a dispatch still being loaded. Their labels are made
+ * by the inventory software as for a new dispatch. Returns how many cartons were added.
+ */
+export async function addDispatchProducts(dispatchId: unknown, lines: unknown): Promise<ActionResult<number>> {
+  const who = await actor();
+  if (!who) return NOT_SIGNED_IN;
+  if (who.scanner) return NOT_ALLOWED;
+  const dispatch = id(dispatchId);
+  if (!dispatch) return NOT_ALLOWED;
+  const parsed = addLinesSchema.safeParse(lines);
+  if (!parsed.success) return { ok: false, message: "Check the products: each needs a number of cartons from 1." };
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_dispatch_add_lines", { p_dispatch: dispatch, p_lines: parsed.data });
+  if (error) return failed(error, "add the products");
+  refresh();
+  const n = Number(data ?? 0);
+  return { ok: true, message: `${n} ${n === 1 ? "carton" : "cartons"} added. Their labels are being made by the inventory software.`, data: n };
+}
+
 /** The supplier's answer to a "Produce now" request. */
 export async function respondProduce(requestId: unknown, status: unknown): Promise<ActionResult> {
   const request = id(requestId);
@@ -438,6 +460,22 @@ export async function cancelPlan(planId: unknown): Promise<ActionResult> {
   if (error) return failed(error, "cancel the plan");
   refresh();
   return { ok: true, message: "Plan cancelled. Rajesh has been told." };
+}
+
+/**
+ * Deletes a send plan for good, whatever its status (VRPRIME's owner and admin only). A dispatch made from it stays; if
+ * it was still to be made, the supplier's owner is told to stop.
+ */
+export async function deletePlan(planId: unknown): Promise<ActionResult> {
+  const denied = await staff();
+  if (denied) return denied;
+  const plan = id(planId);
+  if (!plan) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { error } = await db.rpc("supplier_plan_delete", { p_plan: plan });
+  if (error) return failed(error, "delete the plan");
+  refresh();
+  return { ok: true, message: "Send plan deleted for good" };
 }
 
 /** Turns a send plan into a dispatch with exactly its lines; its labels are then printed. Returns the dispatch's id. */

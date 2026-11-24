@@ -59,6 +59,8 @@ declare
   d_r uuid;
   d_w uuid;
   ids uuid[];
+  d_x uuid;
+  pl3 uuid;
 begin
   insert into public.warehouses (name, vrprime_id) values ('SP Check Main', 'spchk-1') returning id into w_main;
   insert into public.warehouses (name, vrprime_id) values ('SP Check Other', 'spchk-2') returning id into w_other;
@@ -1123,6 +1125,125 @@ begin
   end;
   assert blocked, 'a weight of 0 is refused';
   reset role;
+
+  -- More products on a dispatch after it is made: a new product, and more cartons of one already on it.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  d_x := public.supplier_dispatch_create(s_a, current_date + 2, 'add check', jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 2)));
+  reset role;
+  n := public.supplier_labels_save(d_x, jsonb_build_array(
+    jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 20, 'serial', '1049000000000001', 'svg', null),
+    jsonb_build_object('product_id', p_a, 'carton_type', 'H', 'units', 20, 'serial', '1049000000000002', 'svg', null)));
+  assert n = 2, 'the first two labels are made';
+  perform public.supplier_labels_done(d_x, null);
+  set local role authenticated;
+  n := public.supplier_dispatch_add_lines(d_x, jsonb_build_array(jsonb_build_object('product_id', p_a2, 'cartons', 3), jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  assert n = 4, 'four cartons added';
+  reset role;
+  assert (select cartons from public.supplier_dispatch_lines where dispatch_id = d_x and product_id = p_a) = 3, 'more cartons of a product on it join its line';
+  assert (select cartons = 3 and units_per_carton = 12 from public.supplier_dispatch_lines where dispatch_id = d_x and product_id = p_a2), 'a new product gets its own line';
+  res := public.supplier_labels_claim(d_x);
+  assert (select sum((l->>'need')::int) from jsonb_array_elements(res->'lines') l) = 4, 'their four labels are asked for: ' || res::text;
+  assert (select (l->>'weight')::numeric from jsonb_array_elements(res->'lines') l where l->>'product_id' = p_a::text) = 8.46,
+    'the added carton keeps its line''s weight: ' || res::text;
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_add_lines(d_x, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'no products are added while its labels are being made';
+  n := public.supplier_labels_save(d_x, jsonb_build_array(jsonb_build_object('product_id', p_a2, 'carton_type', 'T', 'units', 12, 'serial', '1049000000000003', 'svg', null)));
+  assert n = 1 and (select carton_no from public.supplier_cartons where barcode = '1049000000000003') = 3, 'an added carton''s label takes the next number';
+  perform public.supplier_labels_done(d_x, null);
+  set local role authenticated;
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_add_lines(d_x, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1, 'units_per_carton', 10)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a product on the dispatch cannot come again with other pieces';
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_add_lines(d_x, jsonb_build_array(jsonb_build_object('product_id', (select id from public.supplier_products where supplier_id = s_a and name = 'SP Unlinked'), 'cartons', 1)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a product with no master SKU cannot be added';
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_add_lines(d_x, jsonb_build_array(jsonb_build_object('product_id', p_b, 'cartons', 1)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'another supplier''s product cannot be added';
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_add_lines(d_a, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a dispatch that left takes no more products';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_add_lines(d_x, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot add products';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_add_lines(d_x, jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot add to this dispatch';
+
+  -- Send plans can be deleted for good, by VRPRIME only: an open one (the supplier is told to stop), a cancelled one,
+  -- and one that became a dispatch (the dispatch stays). Dispatches themselves are never deleted.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  pl3 := public.supplier_plan_create(s_a, (now() at time zone 'Asia/Kolkata')::date + 4, 'to delete',
+    jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 2)));
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_plan_delete(pl3);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the supplier''s owner cannot delete a send plan';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_plan_delete(pl3);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nor the warehouse person';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_plan_delete(pl3);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nor another supplier';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  perform public.supplier_plan_delete(pl3);
+  reset role;
+  assert not exists (select 1 from public.supplier_send_plans where id = pl3), 'VRPRIME deletes an open send plan for good';
+  assert not exists (select 1 from public.supplier_send_plan_lines where plan_id = pl3), 'with its lines';
+  assert (select count(*) from public.notifications where kind = 'supplier_plan' and user_id = u_raj and title like 'VRPRIME deleted send plan %') = 1,
+    'the supplier''s owner is told to stop';
+  assert (select count(*) from public.notifications where kind = 'supplier_plan' and title like 'VRPRIME deleted send plan %' and user_id in (u_scan, u_oth, u_off, u_adm)) = 0,
+    'nobody else is';
+  set local role authenticated;
+  perform public.supplier_plan_delete(pl2);
+  perform public.supplier_plan_delete(pl);
+  reset role;
+  assert not exists (select 1 from public.supplier_send_plans where id in (pl, pl2)), 'a cancelled plan and one that became a dispatch can be deleted too';
+  assert exists (select 1 from public.supplier_dispatches where id = dp), 'the dispatch made from a plan stays';
+  assert (select count(*) from public.notifications where kind = 'supplier_plan' and user_id = u_raj and title like 'VRPRIME deleted send plan %') = 1,
+    'nothing is said about plans already done with';
+  blocked := false;
+  begin
+    perform public.supplier_plan_delete(pl);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a deleted plan is gone';
 
   -- =====================================================================================
   -- 10. A deactivated supplier login, a deactivated supplier, a signed-out visitor

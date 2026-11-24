@@ -22,26 +22,13 @@ import { StaffLogins, SupplierLogins } from "@/components/supplier/supplier-admi
 import { SuppliesPanel } from "@/components/supplier/supplies-panel";
 import { SyncCard } from "@/components/supplier/sync-card";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
-import type { CartonType } from "@/lib/supplier";
 import { PHONE_LINKS, supplierLinks } from "@/lib/supplier-nav";
+import type { DispatchDetail, DispatchSummary, PlanRow, ProduceRow, StockRow } from "@/server/supplier-data";
 import { factorySample } from "./factory-sample";
-import type { CartonRow, DispatchDetail, DispatchSummary, PlanRow, ProduceRow, ProductRow, StockRow } from "@/server/supplier-data";
+import { BIG_DETAIL, BIG_PRODUCTS, DETAIL, DISPATCH, PRODUCTS, SUPPLIER, pid } from "./sample";
 
 // The supplier portal's screens with fake data and no login, for checking layout at 360px, in dark mode and in print.
 // Development only: 404 in production. Buttons that save will fail here (there is no database behind them).
-
-const SUPPLIER = "00000000-0000-4000-8000-000000000001";
-const DISPATCH = "00000000-0000-4000-8000-0000000000d1";
-const pid = (n: number) => `00000000-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
-// Like the inventory software's numbers: 1, the warehouse (01), then a running number.
-const code = (n: number) => `101${String(n).padStart(13, "0")}`;
-
-const PRODUCTS: ProductRow[] = [
-  { id: pid(1), name: "Kitchen Cleaner Spray 500ml", master_id: pid(51), master_code: "150-KITCHEN", category: "kitchen_cleaner", units_per_carton: 24, daily_capacity: 1200, active: true, weight_per_carton: 8.5 },
-  { id: pid(2), name: "Rat Repellent Spray 300ml", master_id: pid(52), master_code: "160-RAT", category: "repellent", units_per_carton: 48, daily_capacity: 900, active: true, weight_per_carton: 8.5 },
-  { id: pid(3), name: "Lizard Repellent Spray 250ml", master_id: null, master_code: null, category: "repellent", units_per_carton: 60, daily_capacity: null, active: true, weight_per_carton: 8.5 },
-  { id: pid(4), name: "Scratch Remover Bottle 150ml", master_id: pid(54), master_code: "150-SCRATCH", category: "other_cleaning", units_per_carton: 110, daily_capacity: 2000, active: false, weight_per_carton: 8.5 },
-];
 
 // Sample product photos (drawn here, not real pictures).
 const bottle = (fill: string, label: string) =>
@@ -61,38 +48,14 @@ const MASTERS = [
   { code: "160-COCKROACH", name: "Cockroach Repellent Spray 250ml" },
 ];
 
-function fakeCartons(): CartonRow[] {
-  const out: CartonRow[] = [];
-  const add = (product: ProductRow, type: CartonType, count: number, loaded: number) => {
-    for (let i = 0; i < count; i++) {
-      const no = out.length + 1;
-      out.push({ id: `c${no}`, product_id: product.id, product: product.name, carton_type: type, units: product.units_per_carton, carton_no: no, barcode: code(4800 + no), status: i < loaded ? "loaded" : "issued", loaded_at: i < loaded ? "2026-11-23T05:40:00Z" : null, void_reason: null, inbound_status: null, weight_per_carton: type === "H" ? 8.5 : 6.2 });
-    }
-  };
-  add(PRODUCTS[0], "H", 6, 4);
-  add(PRODUCTS[1], "T", 5, 1);
-  out[5] = { ...out[5], status: "void", void_reason: "reprinted" };
-  out.push({ ...out[5], id: "c12", carton_no: 12, barcode: code(4812), status: "issued", void_reason: null });
-  return out;
-}
-
-const DETAIL: DispatchDetail = {
-  dispatch: { id: DISPATCH, supplier_id: SUPPLIER, number: 7, status: "loading", due_on: "2026-11-24", note: "Tempo MH04 AB 1234, driver Suresh", vehicle_photo_path: null, created_at: "2026-11-22T10:00:00Z", closed_at: null, received_at: null, labels_run_at: null, labels_error: null },
-  lines: [
-    { product_id: pid(1), product: PRODUCTS[0].name, carton_type: "H", units_per_carton: 24, cartons: 6 },
-    { product_id: pid(2), product: PRODUCTS[1].name, carton_type: "T", units_per_carton: 48, cartons: 5 },
-  ],
-  cartons: fakeCartons(),
-  photoUrl: null,
-};
-
 const summary = (d: DispatchDetail, arrived = 0): DispatchSummary => ({
   ...d.dispatch,
   lines: d.lines,
-  cartons: d.cartons.map((c, i) => ({ dispatch_id: d.dispatch.id, product_id: c.product_id, carton_type: c.carton_type, status: arrived ? ("loaded" as const) : c.status, units: c.units, void_reason: c.void_reason, inbound_status: i < arrived ? ("received" as const) : null, inbound_at: i < arrived ? "2026-11-21T06:00:00Z" : null })),
+  cartons: d.cartons.map((c, i) => ({ dispatch_id: d.dispatch.id, product_id: c.product_id, carton_type: c.carton_type, status: arrived ? ("loaded" as const) : c.status, units: c.units, void_reason: c.void_reason, inbound_status: i < arrived ? ("received" as const) : null, inbound_at: i < arrived ? "2026-11-21T06:00:00Z" : null, weight_per_carton: c.weight_per_carton })),
 });
 const DISPATCHES: DispatchSummary[] = [
   summary(DETAIL),
+  summary(BIG_DETAIL),
   { ...summary(DETAIL, 7), id: "d6", number: 6, status: "closed", due_on: "2026-11-18", closed_at: "2026-11-18T09:00:00Z" },
   { ...summary(DETAIL, 12), id: "d5", number: 5, status: "received", due_on: "2026-11-12", closed_at: "2026-11-12T09:00:00Z", received_at: "2026-11-13T07:00:00Z" },
   { ...summary(DETAIL), id: "d4", number: 4, status: "planned", due_on: "2026-11-18", cartons: [] },
@@ -119,7 +82,7 @@ const PLANS: PlanRow[] = [
   ] },
 ];
 
-const VIEWS = ["home", "production", "supplies", "money", "more", "delivery", "newdispatch", "dispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
+const VIEWS = ["home", "production", "supplies", "money", "more", "delivery", "newdispatch", "dispatch", "bigdispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
 
 const PREVIEW_HREF: Record<string, string> = { "/supplier": "/dev/supplier", "/supplier/production": "/dev/supplier?view=production", "/supplier/dispatches": "/dev/supplier?view=dispatch", "/supplier/money": "/dev/supplier?view=money", "/supplier/supplies": "/dev/supplier?view=supplies", "/supplier/products": "/dev/supplier?view=products", "/supplier/reports": "/dev/supplier?view=vrprime", "/supplier/alerts": "/dev/supplier?view=plan" };
 
@@ -241,7 +204,14 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       {view === "dispatch" ? (
         <>
           <PageTitle title="Dispatch 7" />
-          <DispatchPanel detail={DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} />
+          <DispatchPanel detail={DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} products={PRODUCTS} />
+        </>
+      ) : null}
+
+      {view === "bigdispatch" ? (
+        <>
+          <PageTitle title="Dispatch 8" />
+          <DispatchPanel detail={BIG_DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} products={BIG_PRODUCTS} />
         </>
       ) : null}
 
@@ -285,6 +255,15 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
         <div className="flex flex-col gap-4">
           <PageTitle title="Rajesh Industries" sub="Sends to Bhiwandi" />
           <SyncCard state={{ last_try_at: "2026-11-23T06:00:00Z", last_ok_at: "2026-11-23T06:00:00Z", last_error: null, last_products: 212 }} />
+          <Card className="g-pad">
+            <SectionHead title="Send plans" sub="What you have asked Rajesh Industries to send next, and the answers." />
+            <PlanList
+              plans={[...PLANS, { ...PLANS[1], id: "p0", number: 0, status: "cancelled" }, { ...PLANS[1], id: "pd", number: 3, status: "dispatched", dispatch_id: DISPATCH }]}
+              who="vrprime"
+              dispatchBase="/dev/supplier"
+              photos={PHOTOS}
+            />
+          </Card>
           <StockTable rows={STOCK} warehouse="Bhiwandi" canSetMin />
           <SupplierLogins
             supplierId={SUPPLIER}

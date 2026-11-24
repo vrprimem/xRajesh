@@ -57,7 +57,7 @@ export type DispatchRow = {
   /** Why the last try to get labels stopped, if it did. */
   labels_error: string | null;
 };
-export type LineRow = { product_id: string; product: string; carton_type: CartonType; units_per_carton: number; cartons: number };
+export type LineRow = { product_id: string; product: string; carton_type: CartonType; units_per_carton: number; cartons: number; weight_per_carton: number | null };
 export type CartonRow = {
   id: string;
   product_id: string;
@@ -223,8 +223,9 @@ export type CartonCount = {
   void_reason: string | null;
   inbound_status: "received" | "rejected" | null;
   inbound_at: string | null;
+  weight_per_carton: number | null;
 };
-export type DispatchSummary = DispatchRow & { lines: { product_id: string; product: string; carton_type: CartonType; cartons: number }[]; cartons: CartonCount[] };
+export type DispatchSummary = DispatchRow & { lines: { product_id: string; product: string; carton_type: CartonType; cartons: number; weight_per_carton: number | null }[]; cartons: CartonCount[] };
 
 /** The newest dispatches with what is needed for their counts, their products, and how their cartons arrived. */
 export async function loadDispatches(supplierId: string, limit = 40): Promise<DispatchSummary[]> {
@@ -239,12 +240,12 @@ export async function loadDispatches(supplierId: string, limit = 40): Promise<Di
   if (!rows.length) return [];
   const ids = rows.map((d) => d.id);
   const [lines, cartons, products] = await Promise.all([
-    db.from("supplier_dispatch_lines").select("dispatch_id, product_id, carton_type, cartons").in("dispatch_id", ids).limit(10000),
-    db.from("supplier_cartons").select("dispatch_id, product_id, carton_type, status, units, void_reason, inbound_status, inbound_at").in("dispatch_id", ids).limit(100000),
+    db.from("supplier_dispatch_lines").select("dispatch_id, product_id, carton_type, cartons, weight_per_carton").in("dispatch_id", ids).limit(10000),
+    db.from("supplier_cartons").select("dispatch_id, product_id, carton_type, status, units, void_reason, inbound_status, inbound_at, weight_per_carton").in("dispatch_id", ids).limit(100000),
     db.from("supplier_products").select("id, name").eq("supplier_id", supplierId).limit(5000),
   ]);
   const names = new Map(((products.data ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name]));
-  const lineRows = soft("dispatch lines", lines.error, lines.data as { dispatch_id: string; product_id: string; carton_type: CartonType; cartons: number }[] | null, []).map((l) => ({
+  const lineRows = soft("dispatch lines", lines.error, lines.data as { dispatch_id: string; product_id: string; carton_type: CartonType; cartons: number; weight_per_carton: number | null }[] | null, []).map((l) => ({
     ...l,
     product: names.get(l.product_id) ?? "Unknown product",
   }));
@@ -273,7 +274,7 @@ export async function loadDispatch(id: string): Promise<DispatchDetail | null> {
   if (!dispatch) return null;
   const d = dispatch as DispatchRow;
   const [lines, cartons, products] = await Promise.all([
-    db.from("supplier_dispatch_lines").select("product_id, carton_type, units_per_carton, cartons").eq("dispatch_id", id).limit(1000),
+    db.from("supplier_dispatch_lines").select("product_id, carton_type, units_per_carton, cartons, weight_per_carton").eq("dispatch_id", id).limit(1000),
     db.from("supplier_cartons").select("id, product_id, carton_type, units, carton_no, barcode, status, loaded_at, void_reason, inbound_status, weight_per_carton").eq("dispatch_id", id).order("carton_no").limit(20000),
     db.from("supplier_products").select("id, name").eq("supplier_id", d.supplier_id).limit(5000),
   ]);
