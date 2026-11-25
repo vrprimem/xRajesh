@@ -100,7 +100,6 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref, challa
   const flushRef = useRef<() => Promise<void>>(async () => undefined);
   const lastSeen = useRef<{ code: string; at: number }>({ code: "", at: 0 });
   const video = useRef<HTMLVideoElement>(null);
-  const stream = useRef<MediaStream | null>(null);
 
   const keep = useCallback(
     (next: PendingScan[]) => {
@@ -212,53 +211,57 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref, challa
     };
   }, [dispatchId, flush]);
 
-  // The camera loop.
+  // The camera loop. Each press of "Start the camera" is a new start (`starts`); the loop then reads frames until the
+  // screen closes or the camera is started again. It must not depend on `camera`, which it sets itself: when it did,
+  // turning the picture "on" ended the loop, so the camera showed but nothing was ever read.
   const takeRef = useRef(take);
   useEffect(() => {
     takeRef.current = take;
   }, [take]);
+  const [starts, setStarts] = useState(0);
+  const startCamera = () => {
+    setCamera("starting");
+    setStarts((n) => n + 1);
+  };
   useEffect(() => {
-    if (camera !== "starting") return;
+    if (!starts) return;
     let stop = false;
     let timer = 0;
+    let media: MediaStream | null = null;
     (async () => {
       try {
-        const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false });
+        media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false });
         if (stop) return media.getTracks().forEach((t) => t.stop());
-        stream.current = media;
         if (video.current) {
           video.current.srcObject = media;
           await video.current.play();
         }
         const reader = await makeReader();
+        if (stop) return;
         setQrOnly(reader.qrOnly);
         setCamera("on");
         const tick = async () => {
           if (stop) return;
           try {
             const value = video.current ? await reader.read(video.current) : null;
-            if (value) takeRef.current(value);
+            if (value && !stop) takeRef.current(value);
           } catch {
             // A frame that could not be read: try the next one.
           }
-          timer = window.setTimeout(() => void tick(), 180);
+          if (!stop) timer = window.setTimeout(() => void tick(), 180);
         };
         void tick();
       } catch {
-        setCamera("blocked");
+        if (!stop) setCamera("blocked");
       }
     })();
+    // The screen closing, or a new start: stop reading and let go of this camera.
     return () => {
       stop = true;
       window.clearTimeout(timer);
+      media?.getTracks().forEach((t) => t.stop());
     };
-  }, [camera]);
-  useEffect(
-    () => () => {
-      stream.current?.getTracks().forEach((t) => t.stop());
-    },
-    [],
-  );
+  }, [starts]);
 
   const waitingCodes = new Set(waiting.map((s) => s.barcode));
   let scanned = 0;
@@ -330,7 +333,7 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref, challa
         {camera === "off" || camera === "blocked" ? (
           <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 bg-surface2 p-4 text-center">
             {camera === "blocked" ? <p className="text-[15px] font-semibold text-bad">The camera could not be opened. Allow camera access for this site in the browser, or type the numbers below.</p> : null}
-            <button type="button" onClick={() => setCamera("starting")} className={buttonClass("primary")}>
+            <button type="button" onClick={startCamera} className={buttonClass("primary")}>
               {camera === "blocked" ? "Try the camera again" : "Start the camera"}
             </button>
           </div>
