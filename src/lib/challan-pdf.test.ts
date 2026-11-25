@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream, type PDFPage } from "pdf-lib";
-import { ROWS_PER_PAGE, challanPdf, challanRows, sentOn, type ChallanCarton } from "./challan-pdf.ts";
+import { ROWS_PER_PAGE, challanCut, challanPdf, challanRows, sentOn, type ChallanCarton } from "./challan-pdf.ts";
 
 const cartons = (product_id: string, product: string, count: number, units: number): ChallanCarton[] => Array.from({ length: count }, () => ({ product_id, product, units }));
 
@@ -27,6 +27,25 @@ test("one line per product: full cartons, pieces per carton, odd cartons as loos
   const tie = challanRows([...cartons("x", "X", 2, 12), ...cartons("x", "X", 2, 24)], new Map());
   assert.deepEqual([tie[0].perPack, tie[0].fullPacks, tie[0].loose, tie[0].total], [24, 2, 24, 72], "a tie takes the bigger carton");
   assert.deepEqual(challanRows([], new Map()), []);
+});
+
+test("what the challan covers: the cartons scanned so far while loading, all of them once closed", () => {
+  // 50 cartons planned, 30 scanned: the vehicle leaves short of the plan.
+  const at = (min: number) => new Date(Date.UTC(2026, 10, 25, 9, min)).toISOString();
+  const plan = Array.from({ length: 50 }, (_, i) => ({ carton_no: 50 - i, status: 50 - i <= 30 ? "loaded" : "issued", loaded_at: 50 - i <= 30 ? at(50 - i) : null }));
+  const now = "2026-11-25T12:00:00.000Z";
+  const loading = challanCut({ status: "loading", closed_at: null }, plan, now);
+  assert.equal(loading?.cartons.length, 30, "only the 30 scanned");
+  assert.deepEqual(loading?.cartons.slice(0, 3).map((c) => c.carton_no), [1, 2, 3], "in label order");
+  assert.equal(loading?.sentAt, at(30), "sent when the last carton was scanned, not when the copy was made");
+  const closed = challanCut({ status: "closed", closed_at: "2026-11-25T10:15:00.000Z" }, plan, now);
+  assert.equal(closed?.sentAt, "2026-11-25T10:15:00.000Z", "once closed, when it was closed");
+  assert.equal(closed?.cartons.length, 30);
+  assert.equal(challanCut({ status: "received", closed_at: "2026-11-25T10:15:00.000Z" }, plan, now)?.cartons.length, 30);
+  assert.equal(challanCut({ status: "cancelled", closed_at: null }, plan, now), null, "a cancelled dispatch has none");
+  assert.equal(challanCut({ status: "planned", closed_at: null }, plan.map((c) => ({ ...c, status: "issued", loaded_at: null })), now), null, "nothing scanned, nothing to put on it");
+  assert.equal(challanCut({ status: "loading", closed_at: null }, [{ carton_no: 1, status: "loaded", loaded_at: null }], now)?.sentAt, now, "a missing scan time: now");
+  assert.equal(challanCut({ status: "loading", closed_at: null }, [{ carton_no: 1, status: "void", loaded_at: null }], now), null, "void labels are not sent");
 });
 
 test("the day and time it was sent, in India time", () => {

@@ -80,7 +80,11 @@ function signal(good: boolean) {
  * A scan is first kept on the phone and then sent, so loading carries on with no signal: the scans wait and go when
  * the connection is back. The same carton twice counts once.
  */
-export function Scanner({ dispatchId, number, cartons, planned, backHref }: { dispatchId: string; number: number; cartons: ScanCarton[]; planned: number; backHref: string }) {
+/**
+ * The loading screen: scan each carton's label as it goes on the vehicle. `challanHref`: the challan of the cartons
+ * scanned so far, to hand over with them when the vehicle leaves (even short of the plan).
+ */
+export function Scanner({ dispatchId, number, cartons, planned, backHref, challanHref }: { dispatchId: string; number: number; cartons: ScanCarton[]; planned: number; backHref: string; challanHref?: string }) {
   const [status, setStatus] = useState(() => new Map(cartons.map((c) => [c.barcode, c.status])));
   const [waiting, setWaiting] = useState<PendingScan[]>([]);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -259,6 +263,9 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
   const waitingCodes = new Set(waiting.map((s) => s.barcode));
   let scanned = 0;
   for (const c of cartons) if (status.get(c.barcode) === "loaded" || waitingCodes.has(c.barcode)) scanned += 1;
+  // The challan is made from the scans the server has: one still on this phone would be missing from it.
+  let saved = 0;
+  for (const c of cartons) if (status.get(c.barcode) === "loaded") saved += 1;
   const tone = feedback?.tone === "ok" ? "border-ok bg-ok-soft" : feedback?.tone === "warn" ? "border-warn bg-warn-soft" : "border-bad bg-bad-soft";
 
   return (
@@ -276,6 +283,19 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref }: { di
           {formatNumber(scanned)}
           <span className="text-[22px] text-muted"> / {formatNumber(planned)}</span>
         </p>
+        {challanHref && scanned > 0 ? (
+          <div className="mt-3 border-t border-line-soft pt-3">
+            {waiting.length ? (
+              <p className="text-[15px] font-semibold text-muted">Challan (चालान): wait until every scan is sent, then get it here.</p>
+            ) : (
+              // A plain link: the browser downloads the PDF (a Link would try to open it as a page).
+              <a href={challanHref} download className={buttonClass("primary")}>
+                Challan (चालान) for these {formatNumber(saved)} {saved === 1 ? "carton" : "cartons"}
+              </a>
+            )}
+            <p className="t-caption mt-1.5">The vehicle is leaving? Get the challan of the cartons scanned. Scan more and get it again: it always has every carton scanned.</p>
+          </div>
+        ) : null}
       </div>
 
       {waiting.length ? (

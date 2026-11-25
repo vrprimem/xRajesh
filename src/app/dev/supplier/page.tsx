@@ -260,7 +260,7 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       ) : null}
 
       {view === "scan" ? (
-        <Scanner dispatchId={DISPATCH} number={7} backHref={`/dev/supplier?view=dispatch${who === "scanner" ? "&who=scanner" : ""}`} planned={11} cartons={DETAIL.cartons.map((c) => ({ barcode: c.barcode, carton_no: c.carton_no, product: c.product, status: c.status }))} />
+        <Scanner dispatchId={DISPATCH} number={7} backHref={`/dev/supplier?view=dispatch${who === "scanner" ? "&who=scanner" : ""}`} challanHref={`/dev/supplier/${DISPATCH}/challan`} planned={11} cartons={DETAIL.cartons.map((c) => ({ barcode: c.barcode, carton_no: c.carton_no, product: c.product, status: c.status }))} />
       ) : null}
 
       {view === "labels" ? (

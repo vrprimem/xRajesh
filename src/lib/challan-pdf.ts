@@ -29,6 +29,27 @@ export function challanRows(cartons: ChallanCarton[], skus: ReadonlyMap<string, 
   });
 }
 
+/**
+ * What a dispatch's challan covers, and when it says the goods were sent. Once it has left (closed or received): the
+ * cartons loaded and the time it was closed. While it is still loading: the cartons scanned so far and the time the
+ * last of them was scanned, so a dispatch that goes out short (30 of the 50 planned cartons) gets its challan without
+ * being closed, and a second copy after more scans has them too. Null when there is nothing to put on one: a cancelled
+ * dispatch, or no carton scanned. `now` stands in for a scan time that is missing.
+ */
+export function challanCut<C extends { status: string; carton_no: number; loaded_at: string | null }>(
+  dispatch: { status: string; closed_at: string | null },
+  cartons: readonly C[],
+  now: string,
+): { cartons: C[]; sentAt: string } | null {
+  const left = dispatch.status === "closed" || dispatch.status === "received";
+  if (!left && dispatch.status !== "planned" && dispatch.status !== "loading") return null;
+  const sent = cartons.filter((c) => c.status === "loaded").sort((a, b) => a.carton_no - b.carton_no);
+  if (!sent.length) return null;
+  const times = sent.map((c) => (c.loaded_at ? Date.parse(c.loaded_at) : NaN)).filter((t) => Number.isFinite(t));
+  const lastScan = times.length ? new Date(Math.max(...times)).toISOString() : now;
+  return { cartons: sent, sentAt: left && dispatch.closed_at ? dispatch.closed_at : lastScan };
+}
+
 export const ROWS_PER_PAGE = 9;
 
 const W = 595.28;

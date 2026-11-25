@@ -69,9 +69,11 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
   // What the loaded cartons weigh, by their labels; what the plan weighs, by its lines (cartons with no weight left out).
   const loaded = loadedKg(cartons);
   const planned = plannedKg(lines);
-  // Once it has left, BIGICON's stock receipt challan is filled in from what was loaded and when it was closed. Printing
-  // it is the owner's, not the warehouse person's.
-  const sent = who !== "scanner" && (d.status === "closed" || d.status === "received") && counts.loaded > 0;
+  // BIGICON's stock receipt challan, filled in from the cartons loaded: once it has left, every carton and when it was
+  // closed; while loading, the cartons scanned so far, so a vehicle that leaves short of the plan still gets its
+  // challan without closing. The warehouse person gets it too: he hands it over with the cartons.
+  const sent = (d.status === "closed" || d.status === "received") && counts.loaded > 0;
+  const shortChallan = open && counts.loaded > 0;
   const run = (action: () => Promise<ActionResult>, confirmText?: string) => {
     if (confirmText && !window.confirm(confirmText)) return;
     startTransition(async () => {
@@ -175,6 +177,11 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
                 Download challan (PDF)
               </a>
             ) : null}
+            {shortChallan && supplierSide ? (
+              <a href={`${base}/${d.id}/challan`} download className={buttonClass("outline")}>
+                Challan for the {formatNumber(counts.loaded)} scanned {counts.loaded === 1 ? "carton" : "cartons"} (PDF)
+              </a>
+            ) : null}
             {parts.length === 1 ? (
               <>
                 <a href={`${base}/${d.id}/labels`} download className={buttonClass((open && supplierSide) || sent ? "outline" : "primary")}>
@@ -232,6 +239,12 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
             day and time the dispatch was closed. The challan numbers, job code, tempo number and signature are written by hand.
           </p>
         ) : null}
+        {shortChallan && supplierSide ? (
+          <p className="t-caption mt-2">
+            The vehicle is leaving with fewer cartons than planned? The challan has the cartons scanned so far, with the day and time of the last scan; it
+            does not close the dispatch. Scan more and get it again: it always has every carton scanned.
+          </p>
+        ) : null}
         {parts.length ? (
           <p className="t-caption mt-2">
             {open ? "Labels still to scan." : "Every label of the dispatch."} The PDF is one label per page, 100 × 75 mm, for a label printer. The A4 sheet fits
@@ -255,7 +268,7 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
 
       {open && owner ? (
         <Card className="g-pad">
-          <SectionHead title="Close the dispatch" sub="All three are needed. Closing locks the record; then download the challan to send with the tempo." />
+          <SectionHead title="Close the dispatch" sub="All three are needed. Closing locks the record. Sent fewer cartons than planned? Void the unused labels, then close." />
           <ul className="flex flex-col gap-1.5 text-[15px]">
             {steps.map((s) => (
               <li key={s.text} className="flex items-start gap-2">
