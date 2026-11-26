@@ -14,7 +14,9 @@ export default async function ScanPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const detail = await loadDispatch(id);
-  if (!detail || detail.dispatch.supplier_id !== user.supplierId) notFound();
+  // One VRPRIME deleted for good, or another supplier's: the list instead.
+  if (!detail) redirect("/supplier/dispatches");
+  if (detail.dispatch.supplier_id !== user.supplierId) notFound();
   const back = `/supplier/dispatches/${id}`;
   if (detail.dispatch.status !== "planned" && detail.dispatch.status !== "loading") redirect(back);
   const counts = dispatchCounts(detail.lines, detail.cartons);

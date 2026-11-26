@@ -1463,6 +1463,76 @@ begin
   end;
   assert blocked, 'a deleted plan is gone';
 
+  -- Dispatches can be deleted for good too (since 2026-11-26), by VRPRIME only: everything of it goes with it, a
+  -- notification that leads to it goes, its people are told to stop loading one still open, and its number is never
+  -- given out again.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_delete(d_x);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the supplier''s owner cannot delete a dispatch';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_delete(d_x);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nor the warehouse person';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_delete(d_x);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'nor another supplier';
+  reset role;
+  select number into n from public.supplier_dispatches where id = d_x;
+  assert n = (select max(number) from public.supplier_dispatches where supplier_id = s_a), 'the dispatch to delete is the newest';
+  insert into public.notifications (user_id, kind, url, title) values (u_raj, 'supplier_due', '/supplier/dispatches/' || d_x::text, 'SP old due');
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  t := public.supplier_dispatch_delete(d_x)::text;
+  reset role;
+  assert t = s_a::text, 'it answers whose dispatch it was';
+  assert not exists (select 1 from public.supplier_dispatches where id = d_x), 'VRPRIME deletes a dispatch for good';
+  assert not exists (select 1 from public.supplier_dispatch_lines where dispatch_id = d_x)
+     and not exists (select 1 from public.supplier_cartons where dispatch_id = d_x)
+     and not exists (select 1 from public.supplier_label_requests where dispatch_id = d_x)
+     and not exists (select 1 from public.supplier_scan_events where dispatch_id = d_x), 'with its lines, labels, label requests and scans';
+  assert not exists (select 1 from public.notifications where title = 'SP old due'), 'a notification that leads to it goes';
+  assert (select count(*) from public.notifications where kind = 'supplier_dispatch' and title = 'VRPRIME deleted dispatch ' || n and user_id in (u_raj, u_scan)) = 2,
+    'the supplier''s owner and warehouse person are told to stop loading it';
+  assert (select count(*) from public.notifications where kind = 'supplier_dispatch' and user_id in (u_oth, u_off, u_adm)) = 0, 'nobody else is';
+  -- One that has left can go too, without a word to the supplier.
+  set local role authenticated;
+  perform public.supplier_dispatch_delete(d_a);
+  reset role;
+  assert not exists (select 1 from public.supplier_dispatches where id = d_a), 'a dispatch that left can be deleted too';
+  assert (select count(*) from public.notifications where kind = 'supplier_dispatch') = 2, 'nothing is said about one that left';
+  set local role authenticated;
+  blocked := false;
+  begin
+    perform public.supplier_dispatch_delete(d_x);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'a deleted dispatch is gone';
+  -- The next dispatch is numbered past the deleted one, though it was the newest.
+  q := d_x;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  d_x := public.supplier_dispatch_create(s_a, current_date + 2, 'after a delete', jsonb_build_array(jsonb_build_object('product_id', p_a, 'cartons', 1)));
+  reset role;
+  assert d_x <> q and (select number from public.supplier_dispatches where id = d_x) = n + 1, 'a deleted dispatch''s number is not given out again';
+  -- Another supplier's numbers are its own: they do not jump past this supplier's deleted ones.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  dp := public.supplier_dispatch_create(s_b, current_date + 2, null, jsonb_build_array(jsonb_build_object('product_id', p_b, 'cartons', 1)));
+  reset role;
+  assert (select number from public.supplier_dispatches where id = dp) = (select max(number) + 1 from public.supplier_dispatches where supplier_id = s_b and id <> dp),
+    'another supplier''s dispatches keep their own numbers';
+
   -- =====================================================================================
   -- 10. A deactivated supplier login, a deactivated supplier, a signed-out visitor
   -- =====================================================================================

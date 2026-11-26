@@ -13,7 +13,7 @@ import { formatDate, formatDateTime, formatNumber, noun } from "@/lib/format";
 import { safeError } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/client";
 import { DISPATCH_STATUS_LABEL, dispatchCounts, labelsOwed, pendingKey, readPending, type DispatchStatus } from "@/lib/supplier";
-import { cancelDispatch, closeDispatch, receiveDispatch, requestLabels, setDispatchPhoto, voidUnusedLabels } from "@/server/actions/supplier";
+import { cancelDispatch, closeDispatch, deleteDispatch, receiveDispatch, requestLabels, setDispatchPhoto, voidUnusedLabels } from "@/server/actions/supplier";
 import type { ActionResult } from "@/lib/types";
 import type { DispatchDetail, ProductRow } from "@/server/supplier-data";
 
@@ -44,10 +44,25 @@ function CartonCounter({ planned, loaded, left }: { planned: number; loaded: num
  *   who = "owner"    the supplier owner: everything, including printing labels, closing and cancelling a plan
  *   who = "scanner"  the supplier's warehouse person: scan the cartons and add the vehicle photo, nothing more (no
  *                    printing, voiding or closing: those are the owner's)
- *   who = "vrprime"  VRPRIME owner and admin: read, download labels, and mark a closed dispatch received
+ *   who = "vrprime"  VRPRIME owner and admin: read, download labels, mark a closed dispatch received, and delete a
+ *                    dispatch for good (then go to `deletedHref`)
  * `products`: the supplier's products, for adding more to a dispatch still being loaded (the owner only).
  */
-export function DispatchPanel({ detail, who, base, photos = {}, products = [] }: { detail: DispatchDetail; who: "owner" | "scanner" | "vrprime"; base: string; photos?: Record<string, string>; products?: ProductRow[] }) {
+export function DispatchPanel({
+  detail,
+  who,
+  base,
+  photos = {},
+  products = [],
+  deletedHref,
+}: {
+  detail: DispatchDetail;
+  who: "owner" | "scanner" | "vrprime";
+  base: string;
+  photos?: Record<string, string>;
+  products?: ProductRow[];
+  deletedHref?: string;
+}) {
   const { dispatch: d, lines, cartons, photoUrl } = detail;
   const router = useRouter();
   const toast = useToast();
@@ -90,6 +105,24 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
     }
     if (waiting) return toast.show(`${waiting} scans on this phone are still waiting to be sent. Open Scan cartons with a connection first.`, "bad");
     run(() => closeDispatch(d.id), "Close this dispatch? It is locked after that: no more scans, labels or changes.");
+  };
+
+  // VRPRIME deletes it for good; the page is then gone, so it goes on to `deletedHref`.
+  const remove = (to: string) => {
+    const text = [
+      `Delete dispatch ${d.number} for good? It cannot be brought back.`,
+      "",
+      "Its labels, scans, challan and vehicle photo go with it.",
+      ...(open ? ["The supplier is told not to load it."] : []),
+      ...(counts.loaded
+        ? [`The ${formatNumber(counts.loaded)} scanned ${noun(counts.loaded, "carton")} (${formatNumber(counts.units)} ${noun(counts.units, "piece")}) count as ready stock at the supplier again.`]
+        : []),
+      "Labels already printed stay in the VRPRIME inventory software as they are.",
+    ];
+    if (!window.confirm(text.join("\n"))) return;
+    startTransition(async () => {
+      if (toast.result(await deleteDispatch(d.id))) router.replace(to);
+    });
   };
 
   const uploadPhoto = async (file: File) => {
@@ -396,6 +429,18 @@ export function DispatchPanel({ detail, who, base, photos = {}, products = [] }:
       {open && who === "owner" ? <AddProducts dispatchId={d.id} products={products} lines={lines} photos={photos} /> : null}
 
       <LabelGroups dispatchId={d.id} base={base} lines={lines} cartons={cartons} canChange={open && owner} canPrint={who !== "scanner"} photos={photos} />
+
+      {who === "vrprime" && deletedHref ? (
+        <Card className="g-pad">
+          <SectionHead
+            title="Delete this dispatch permanently"
+            sub={`For a dispatch made by mistake. Its labels, scans, challan and vehicle photo are deleted with it and cannot be brought back. Labels already printed stay in the VRPRIME inventory software as they are, and the number ${d.number} is not used again.`}
+          />
+          <button type="button" disabled={pending} onClick={() => remove(deletedHref)} className={buttonClass("outline", "text-bad")}>
+            Delete permanently
+          </button>
+        </Card>
+      ) : null}
     </div>
   );
 }

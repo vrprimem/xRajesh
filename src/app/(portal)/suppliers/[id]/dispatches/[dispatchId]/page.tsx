@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
 import { PageTitle, buttonClass } from "@/components/ui";
 import { canManage, requireUser } from "@/lib/auth";
@@ -10,14 +10,17 @@ export const metadata: Metadata = { title: "Dispatch" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** A supplier's dispatch as VRPRIME sees it: read only, plus "Mark as received" once it is closed. */
+/** A supplier's dispatch as VRPRIME sees it: read only, plus "Mark as received" once it is closed and "Delete permanently". */
 export default async function SupplierDispatchPage({ params }: { params: Promise<{ id: string; dispatchId: string }> }) {
   const user = await requireUser();
   if (!canManage(user)) notFound();
   const { id, dispatchId } = await params;
   if (!UUID.test(id) || !UUID.test(dispatchId)) notFound();
   const [supplier, detail, photos] = await Promise.all([loadSupplier(id), loadDispatch(dispatchId), loadProductPhotos(id)]);
-  if (!supplier || !detail || detail.dispatch.supplier_id !== id) notFound();
+  if (!supplier) notFound();
+  // Gone (deleted for good, also right after "Delete permanently" here): the supplier's page, with the dispatches left.
+  if (!detail) redirect(`/suppliers/${id}`);
+  if (detail.dispatch.supplier_id !== id) notFound();
   return (
     <>
       <PageTitle
@@ -28,7 +31,7 @@ export default async function SupplierDispatchPage({ params }: { params: Promise
           </Link>
         }
       />
-      <DispatchPanel detail={detail} who="vrprime" base={`/suppliers/${id}/dispatches`} photos={photos} />
+      <DispatchPanel detail={detail} who="vrprime" base={`/suppliers/${id}/dispatches`} photos={photos} deletedHref={`/suppliers/${id}`} />
     </>
   );
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { DispatchPanel } from "@/components/supplier/dispatch-panel";
 import { PageTitle, buttonClass } from "@/components/ui";
 import { requirePortalUser } from "@/lib/auth";
@@ -17,8 +17,9 @@ export default async function SupplierDispatchPage({ params }: { params: Promise
   const owner = user.role === "supplier_owner";
   // The owner can add products to a dispatch still being loaded, so the products come along for them.
   const [detail, photos, products] = await Promise.all([loadDispatch(id), loadProductPhotos(user.supplierId), owner ? loadProducts(user.supplierId) : Promise.resolve([])]);
-  // Another supplier's dispatch is simply not found: the database returns nothing for it.
-  if (!detail || detail.dispatch.supplier_id !== user.supplierId) notFound();
+  // One VRPRIME deleted for good, or another supplier's (the database returns nothing for it): the list instead.
+  if (!detail) redirect("/supplier/dispatches");
+  if (detail.dispatch.supplier_id !== user.supplierId) notFound();
   return (
     <>
       <PageTitle

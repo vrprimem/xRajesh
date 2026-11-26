@@ -97,6 +97,7 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref, challa
   const byCode = useRef(new Map(cartons.map((c) => [c.barcode, c])));
   const queue = useRef<PendingScan[]>([]);
   const sending = useRef(false);
+  const refusedBuzz = useRef(false);
   const flushRef = useRef<() => Promise<void>>(async () => undefined);
   const lastSeen = useRef<{ code: string; at: number }>({ code: "", at: 0 });
   const video = useRef<HTMLVideoElement>(null);
@@ -117,10 +118,20 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref, challa
   const flush = useCallback(async () => {
     if (sending.current || !queue.current.length) return;
     sending.current = true;
+    let again = true;
     try {
       const batch = queue.current.slice(0, 200);
       const result = await scanCartons(dispatchId, batch);
-      if (!result.ok || !result.data) return;
+      if (!result.ok || !result.data) {
+        // Refused, not a lost connection (VRPRIME deleted the dispatch, say): say so, and do not ask again and again.
+        // The scans stay on the phone; the next scan sends them again.
+        again = false;
+        // A buzz once after a scan, not at each try every 15 seconds.
+        if (!refusedBuzz.current) signal(false);
+        refusedBuzz.current = true;
+        setFeedback({ tone: "bad", title: "Scans not saved", detail: result.message });
+        return;
+      }
       const answers = result.data;
       keep(dropAnswered(queue.current, answers.length ? answers : batch));
       setStatus((old) => {
@@ -141,7 +152,7 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref, challa
     } finally {
       sending.current = false;
       // More than one batch was waiting: send the next.
-      if (queue.current.length && navigator.onLine) window.setTimeout(() => void flushRef.current(), 400);
+      if (again && queue.current.length && navigator.onLine) window.setTimeout(() => void flushRef.current(), 400);
     }
   }, [dispatchId, keep]);
   useEffect(() => {
@@ -169,6 +180,7 @@ export function Scanner({ dispatchId, number, cartons, planned, backHref, challa
         return setFeedback({ tone: "warn", title: SCAN_RESULT_TEXT.already, detail: `Label ${known.carton_no} · ${known.product}` });
       }
       keep(addPending(queue.current, code, new Date(now).toISOString()));
+      refusedBuzz.current = false;
       if (known) {
         signal(true);
         setFeedback({ tone: "ok", title: `Label ${known.carton_no}`, detail: known.product });

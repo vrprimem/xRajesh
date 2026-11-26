@@ -107,6 +107,8 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
   if (process.env.NODE_ENV !== "development") notFound();
   const sp = await searchParams;
   const who = sp.who === "scanner" ? "scanner" : "owner";
+  // A dispatch as VRPRIME sees it: &who=vrprime.
+  const panelWho = sp.who === "vrprime" ? "vrprime" : who;
   const asked = VIEWS.find((v) => v === sp.view) ?? "home";
   const view = who === "scanner" && !STAFF_VIEWS.includes(asked) ? "godown" : asked;
   const f = factorySample(PLANS.map((p) => ({ id: p.id, number: p.number, due_on: p.due_on, lines: p.lines })));
@@ -241,21 +243,21 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       {view === "dispatch" ? (
         <>
           <PageTitle title="Dispatch 7" />
-          <DispatchPanel detail={DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} products={PRODUCTS} />
+          <DispatchPanel detail={DETAIL} who={panelWho} base="/dev/supplier" photos={PHOTOS} products={PRODUCTS} deletedHref="/dev/supplier?view=vrprime" />
         </>
       ) : null}
 
       {view === "bigdispatch" ? (
         <>
           <PageTitle title="Dispatch 8" />
-          <DispatchPanel detail={BIG_DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} products={BIG_PRODUCTS} />
+          <DispatchPanel detail={BIG_DETAIL} who={panelWho} base="/dev/supplier" photos={PHOTOS} products={BIG_PRODUCTS} deletedHref="/dev/supplier?view=vrprime" />
         </>
       ) : null}
 
       {view === "sentdispatch" ? (
         <>
           <PageTitle title="Dispatch 9" />
-          <DispatchPanel detail={SENT_DETAIL} who={who} base="/dev/supplier" photos={PHOTOS} products={BIG_PRODUCTS} />
+          <DispatchPanel detail={SENT_DETAIL} who={panelWho} base="/dev/supplier" photos={PHOTOS} products={BIG_PRODUCTS} deletedHref="/dev/supplier?view=vrprime" />
         </>
       ) : null}
 
@@ -332,7 +334,7 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
             ]}
           />
           <StaffLogins me="u1" logins={[{ id: "u1", name: "Aman", role: "owner", active: true }, { id: "u2", name: "Jigar", role: "admin", active: true }]} />
-          <DispatchPanel detail={{ ...DETAIL, dispatch: { ...DETAIL.dispatch, status: "closed", closed_at: "2026-11-23T09:00:00Z" } }} who="vrprime" base="/dev/supplier" />
+          <DispatchPanel detail={{ ...DETAIL, dispatch: { ...DETAIL.dispatch, status: "closed", closed_at: "2026-11-23T09:00:00Z" } }} who="vrprime" base="/dev/supplier" deletedHref="/dev/supplier?view=vrprime" />
         </div>
       ) : null}
     </PortalShell>

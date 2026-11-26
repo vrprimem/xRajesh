@@ -86,7 +86,15 @@ export async function scanCartons(dispatchId: unknown, scans: unknown): Promise<
   if (!parsed.data.length) return { ok: true, message: "Nothing to save", data: [] };
   const db = await supplierDb();
   const { data, error } = await db.rpc("supplier_scan", { p_dispatch: dispatchId, p_scans: parsed.data });
-  if (error) return failed(error, "save the scans");
+  if (error) {
+    // The database refuses a dispatch that is not there as "not allowed"; one VRPRIME deleted while it was being
+    // loaded is told plainly.
+    if (error.code === "42501") {
+      const { data: still } = await db.from("supplier_dispatches").select("id").eq("id", dispatchId).maybeSingle();
+      if (!still) return { ok: false, message: "This dispatch is no longer there. Do not load these cartons." };
+    }
+    return failed(error, "save the scans");
+  }
   return { ok: true, message: "Saved", data: (data ?? []) as ScanAnswer[] };
 }
 
@@ -476,6 +484,41 @@ export async function deletePlan(planId: unknown): Promise<ActionResult> {
   if (error) return failed(error, "delete the plan");
   refresh();
   return { ok: true, message: "Send plan deleted for good" };
+}
+
+/**
+ * Deletes a dispatch for good, whatever its status (VRPRIME's owner and admin only): its lines, labels, scans and vehicle
+ * photos go with it, and its number is never given out again. If it was still to be loaded, the supplier's people are
+ * told to stop. Labels already made stay in the VRPRIME inventory software as they are: the portal never changes it.
+ */
+export async function deleteDispatch(dispatchId: unknown): Promise<ActionResult> {
+  const denied = await staff();
+  if (denied) return denied;
+  const dispatch = id(dispatchId);
+  if (!dispatch) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_dispatch_delete", { p_dispatch: dispatch });
+  if (error) return failed(error, "delete the dispatch");
+  const supplier = id(data);
+  if (supplier) await removeFolder(`${supplier}/${dispatch}`);
+  refresh();
+  return { ok: true, message: "Dispatch deleted for good" };
+}
+
+/**
+ * Removes every file in a folder of the supplier-photos bucket (a dispatch's vehicle photos: only the Storage API can
+ * remove files). Best effort: the record is already gone, so a file left behind is only logged.
+ */
+async function removeFolder(folder: string) {
+  const { admin, problem } = getAdmin();
+  if (problem !== null) return logError("dispatch photos", problem);
+  const bucket = admin.storage.from("supplier-photos");
+  const { data: files, error } = await bucket.list(folder, { limit: 1000 });
+  if (error) return logError("dispatch photos", error);
+  const paths = (files ?? []).map((f) => `${folder}/${f.name}`);
+  if (!paths.length) return;
+  const { error: removeError } = await bucket.remove(paths);
+  if (removeError) logError("dispatch photos", removeError);
 }
 
 /** Turns a send plan into a dispatch with exactly its lines; its labels are then printed. Returns the dispatch's id. */
