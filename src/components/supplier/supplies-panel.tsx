@@ -6,9 +6,9 @@ import { useToast } from "@/components/toast";
 import { Card, Chip, EmptyState, Field, SectionHead, buttonClass } from "@/components/ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import { familyColours, pictureFor } from "@/lib/godown-pictures";
-import { formatBoxes, formatQty, isLow, ITEM_KIND_LABEL, ITEM_KINDS, ITEM_UNITS, MOVE_REASON_LABEL, readNumber, staffItemName, UNIT_LABEL, UNIT_SHORT, type ItemKind, type ItemMove, type ItemStock, type ItemUnit } from "@/lib/supplies";
+import { formatBoxes, formatQty, isLow, ITEM_KIND_LABEL, ITEM_KINDS, ITEM_UNITS, MOVE_REASON_LABEL, readNumber, removeSupplyText, staffItemName, UNIT_LABEL, UNIT_SHORT, type ItemKind, type ItemMove, type ItemStock, type ItemUnit } from "@/lib/supplies";
 import { uploadSupplierPhoto } from "@/lib/supplier-photo-upload";
-import { countItem, saveItem, setItemPhoto } from "@/server/actions/supplies";
+import { countItem, removeItem, saveItem, setItemPhoto } from "@/server/actions/supplies";
 
 type Form = {
   id: string | null;
@@ -51,7 +51,8 @@ const lastsText = (days: number | null) => (days === null ? "not used lately" : 
  * holds, the simple names the godown staff know them by, what a chemical makes when mixed, and their photos;
  * `canCount`: count stock. `photos`: links to the supplies' photos (the rest show a drawn picture). `staff`: the
  * reader is the warehouse person, who knows the supplies by their simple names. `startAdding` opens the form for a
- * new supply.
+ * new supply. With `canEdit`, each supply can also be removed for good; `usedIn` (each supply's products whose recipes
+ * use it) goes into the question asked first.
  */
 export function SuppliesPanel({
   supplierId,
@@ -63,6 +64,7 @@ export function SuppliesPanel({
   photos = {},
   staff = false,
   startAdding = false,
+  usedIn = {},
 }: {
   supplierId: string;
   items: ItemStock[];
@@ -73,6 +75,7 @@ export function SuppliesPanel({
   photos?: Record<string, string>;
   staff?: boolean;
   startAdding?: boolean;
+  usedIn?: Record<string, string[]>;
 }) {
   const toast = useToast();
   const [pending, startTransition] = useTransition();
@@ -140,6 +143,16 @@ export function SuppliesPanel({
       });
       if (toast.result(result)) setForm(null);
       else if (!result.ok && result.fieldErrors) setErrors(result.fieldErrors);
+    });
+  };
+
+  /** Removes a supply for good, once the owner has read what goes with it. */
+  const remove = (item: ItemStock) => {
+    if (!window.confirm(removeSupplyText(item, usedIn[item.id] ?? []))) return;
+    startTransition(async () => {
+      if (!toast.result(await removeItem(item.id))) return;
+      if (form?.id === item.id) setForm(null);
+      if (counting === item.id) setCounting(null);
     });
   };
 
@@ -313,7 +326,7 @@ export function SuppliesPanel({
                   <p className="t-caption">{lastsText(daysLeft[i.id] ?? null)}</p>
                 </div>
                 {(canCount || canEdit) && counting !== i.id ? (
-                  <div className="flex w-full justify-end gap-2 min-[700px]:w-auto">
+                  <div className="flex w-full flex-wrap justify-end gap-2 min-[700px]:w-auto">
                     {canCount ? (
                       <button type="button" onClick={() => (setCounting(i.id), setCountedBoxes(""), setCounted(""), setCountError(""))} className={buttonClass("row")}>
                         Count
@@ -326,6 +339,9 @@ export function SuppliesPanel({
                         </button>
                         <button type="button" disabled={uploading} onClick={() => (setPhotoFor(i.id), photoInput.current?.click())} className={buttonClass("row")}>
                           {uploading && photoFor === i.id ? "Uploading..." : i.photo_path ? "Change photo" : "Add photo"}
+                        </button>
+                        <button type="button" disabled={pending} onClick={() => remove(i)} className={buttonClass("row", "text-bad")}>
+                          Remove
                         </button>
                       </>
                     ) : null}

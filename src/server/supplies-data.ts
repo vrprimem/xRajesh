@@ -1,7 +1,7 @@
 import "server-only";
 import { addDays } from "@/lib/format";
 import { shiftMonth } from "@/lib/report";
-import type { Cost, ItemMove, ItemStock, Payment, ProductionEntry, Purchase, ReadyRow, RecipeLine, VendorBalance } from "@/lib/supplies";
+import { recipeUses, type Cost, type ItemMove, type ItemStock, type Payment, type ProductionEntry, type Purchase, type ReadyRow, type RecipeLine, type VendorBalance } from "@/lib/supplies";
 import { notInstalled, soft, supplierDb } from "@/server/supplier-data";
 
 // What the supplies, production and money screens read. Every query runs as the signed-in person, so the database
@@ -87,6 +87,13 @@ export async function loadRecipes(supplierId: string): Promise<RecipeLine[]> {
   const db = await supplierDb();
   const { data, error } = await db.from("supplier_recipes").select("product_id, item_id, qty, per").eq("supplier_id", supplierId).limit(5000);
   return soft("recipes", error, data as RecipeLine[] | null, []).map((r) => ({ ...r, qty: n(r.qty) }));
+}
+
+/** For each supply, the products whose recipes use it, by name. */
+export async function loadRecipeUses(supplierId: string): Promise<Record<string, string[]>> {
+  const db = await supplierDb();
+  const [recipes, products] = await Promise.all([loadRecipes(supplierId), db.from("supplier_products").select("id, name").eq("supplier_id", supplierId).limit(5000)]);
+  return recipeUses(recipes, soft("products", products.error, products.data as { id: string; name: string }[] | null, []));
 }
 
 export type MoneyData = {

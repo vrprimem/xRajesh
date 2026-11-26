@@ -159,6 +159,24 @@ export async function setItemPhoto(itemId: unknown, path: unknown): Promise<Acti
 }
 
 /**
+ * Removes a supply for good (the owner or VRPRIME): its stock changes and its lines in the recipes go with it, then its
+ * photo and goods-in bills are removed from the files. The database refuses a supply with purchases.
+ */
+export async function removeItem(itemId: unknown): Promise<ActionResult> {
+  const who = await allowed("owner_or_vrprime");
+  if (refused(who)) return who;
+  const item = idOf(itemId);
+  if (!item) return NOT_ALLOWED;
+  const db = await supplierDb();
+  const { data, error } = await db.rpc("supplier_item_delete", { p_item: item });
+  if (error) return failed(error, "remove the supply");
+  const files: unknown[] = Array.isArray(data) ? data : [];
+  await removePhotos(files.filter((f): f is string => typeof f === "string" && (ITEM_PHOTO.test(f) || GOODS_IN_PHOTO.test(f))));
+  refresh();
+  return { ok: true, message: "Supply removed" };
+}
+
+/**
  * A product's photo taken by the supplier (its owner, or VRPRIME), already uploaded; null takes it off. It shows in
  * place of VRPRIME's photo of the product's master SKU. The old file is removed.
  */

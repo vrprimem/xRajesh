@@ -166,3 +166,34 @@ export function readNumber(text: string): number | null {
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }
+
+/** For each supply, the names of the products whose recipes use it, A to Z. */
+export function recipeUses(recipes: readonly Pick<RecipeLine, "product_id" | "item_id">[], products: readonly { id: string; name: string }[]): Record<string, string[]> {
+  const names = new Map(products.map((p) => [p.id, p.name]));
+  const uses: Record<string, string[]> = {};
+  for (const r of recipes) {
+    const name = names.get(r.product_id);
+    if (name) (uses[r.item_id] ??= []).push(name);
+  }
+  for (const list of Object.values(uses)) list.sort((a, b) => a.localeCompare(b));
+  return uses;
+}
+
+/** "A", "A and B", "A, B and C". */
+const andList = (names: readonly string[]) => (names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
+
+/**
+ * What the owner is asked before a supply is removed for good: what goes with it (its stock as the list shows it, its
+ * stock changes, its photo), the recipes it comes out of, and the gentler way to keep it out of sight.
+ */
+export function removeSupplyText(item: Pick<ItemStock, "name" | "on_hand" | "unit" | "box_qty" | "photo_path">, usedIn: readonly string[]): string {
+  const goes = andList([...(item.on_hand ? [`its stock (${formatBoxes(item.on_hand, item.unit, item.box_qty)})`] : []), "its stock changes", ...(item.photo_path ? ["its photo"] : [])]);
+  return [
+    `Remove ${item.name} from your supplies for good? It cannot be brought back.`,
+    "",
+    `${goes.charAt(0).toUpperCase()}${goes.slice(1)} go with it.`,
+    ...(usedIn.length ? [`It is taken out of the ${usedIn.length === 1 ? "recipe" : "recipes"} of ${andList(usedIn)}.`] : []),
+    "",
+    'To keep it but hide it, use Edit and untick "In use" instead.',
+  ].join("\n");
+}

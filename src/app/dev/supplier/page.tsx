@@ -24,7 +24,7 @@ import { SyncCard } from "@/components/supplier/sync-card";
 import { GodownDemo } from "./godown-demo";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { PHONE_LINKS, supplierLinks } from "@/lib/supplier-nav";
-import { isLow } from "@/lib/supplies";
+import { isLow, recipeUses } from "@/lib/supplies";
 import type { DispatchDetail, DispatchSummary, PlanRow, ProduceRow, StockRow } from "@/server/supplier-data";
 import { factorySample } from "./factory-sample";
 import { BIG_DETAIL, BIG_PRODUCTS, DETAIL, DISPATCH, PRODUCTS, SENT_DETAIL, SUPPLIER, pid } from "./sample";
@@ -192,7 +192,17 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       {view === "supplies" ? (
         <>
           <PageTitle title="Supplies" sub={`${f.items.filter((i) => i.active).length} in use · ${f.items.filter((i) => i.active && isLow(i)).length} running low`} />
-          <SuppliesPanel supplierId={SUPPLIER} items={f.items} moves={f.moves} daysLeft={f.daysLeft} canEdit={who === "owner"} canCount staff={who === "scanner"} startAdding={sp.add === "1"} />
+          <SuppliesPanel
+            supplierId={SUPPLIER}
+            items={f.items}
+            moves={f.moves}
+            daysLeft={f.daysLeft}
+            canEdit={who === "owner"}
+            canCount
+            staff={who === "scanner"}
+            startAdding={sp.add === "1"}
+            usedIn={recipeUses(f.recipes, f.ready.map((r) => ({ id: r.product_id, name: r.name })))}
+          />
         </>
       ) : null}
 

@@ -64,6 +64,8 @@ declare
   ids uuid[];
   d_x uuid;
   pl3 uuid;
+  i_spare uuid;
+  gone text[];
 begin
   insert into public.warehouses (name, vrprime_id) values ('SP Check Main', 'spchk-1') returning id into w_main;
   insert into public.warehouses (name, vrprime_id) values ('SP Check Other', 'spchk-2') returning id into w_other;
@@ -1120,6 +1122,71 @@ begin
   exception when insufficient_privilege then blocked := true;
   end;
   assert blocked, 'another supplier cannot set a box here';
+
+  -- Removing a supply for good: the owner or VRPRIME. Its stock changes and recipe lines go with it, and the files only
+  -- it used come back to be removed. Not by the warehouse person or another supplier, and not a supply with purchases.
+  blocked := false;
+  begin
+    perform public.supplier_item_delete(i_stk);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'another supplier cannot remove a supply';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_scan, 'role', 'authenticated')::text, true);
+  blocked := false;
+  begin
+    perform public.supplier_item_delete(i_stk);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the warehouse person cannot remove a supply';
+  -- The sticker gets two goods-in bills (one of them also on another supply's goods in), a photo and a recipe line.
+  gp := s_a::text || '/goods-in/' || gen_random_uuid()::text || '.jpg';
+  path := s_a::text || '/goods-in/' || gen_random_uuid()::text || '.jpg';
+  perform public.supplier_item_receive(i_stk, 100, gp);
+  perform public.supplier_item_receive(i_stk, 100, path);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  i_spare := public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Spare cap', 'kind', 'cap'));
+  perform public.supplier_item_receive(i_spare, 10, path);
+  t := s_a::text || '/items/' || gen_random_uuid()::text || '.jpg';
+  perform public.supplier_item_set_photo(i_stk, t);
+  perform public.supplier_recipe_save(p_a, (select jsonb_agg(jsonb_build_object('item_id', r.item_id, 'qty', r.qty, 'per', r.per)) from public.supplier_recipes r where r.product_id = p_a)
+                                           || jsonb_build_array(jsonb_build_object('item_id', i_stk, 'qty', 1)));
+  assert (select count(*) from public.supplier_recipes where product_id = p_a) = 5, 'the sticker is in the recipe';
+  blocked := false;
+  begin
+    perform public.supplier_item_delete(i_bottle);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked and exists (select 1 from public.supplier_items where id = i_bottle), 'a supply with purchases is not removed';
+  gone := public.supplier_item_delete(i_stk);
+  assert gone = array[t, gp], 'its photo and its own bill come back to be removed, not the bill another supply shows';
+  assert not exists (select 1 from public.supplier_items where id = i_stk), 'the supply is gone';
+  assert not exists (select 1 from public.supplier_item_moves where item_id = i_stk), 'its stock changes went with it';
+  assert (select count(*) from public.supplier_recipes where product_id = p_a) = 4, 'it came out of the recipe, and the rest of it stayed';
+  assert not exists (select 1 from public.supplier_godown_events(s_a) where item_id = i_stk), 'the godown no longer shows it';
+  assert exists (select 1 from public.supplier_item_moves where item_id = i_spare and photo_path = path), 'the other supply keeps its bill';
+  blocked := false;
+  begin
+    perform public.supplier_item_delete(i_stk);
+  exception when invalid_parameter_value then blocked := true;
+  end;
+  assert blocked, 'removing it again says it is no longer there';
+  perform public.supplier_item_delete(public.supplier_item_save(s_a, jsonb_build_object('name', 'SP Sticker', 'kind', 'label')));
+  t := s_a::text || '/items/' || gen_random_uuid()::text || '.jpg';
+  perform public.supplier_item_set_photo(i_spare, t);
+  perform public.supplier_item_set_photo(i_trig, t);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  gone := public.supplier_item_delete(i_spare);
+  assert gone = array[path] and not exists (select 1 from public.supplier_items where id = i_spare),
+    'VRPRIME can remove a supply too; a bill goes with the last supply that showed it, a photo another supply shows stays';
+  reset role;
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  blocked := false;
+  begin
+    perform public.supplier_item_delete(i_bottle);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'a signed-out visitor cannot remove a supply';
   reset role;
 
   -- =====================================================================================
