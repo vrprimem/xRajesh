@@ -66,6 +66,12 @@ declare
   pl3 uuid;
   i_spare uuid;
   gone text[];
+  book jsonb;
+  dday date;
+  ck public.supplier_cartons;
+  ckb public.supplier_cartons;
+  db_b public.supplier_dispatches;
+  i_b uuid;
 begin
   insert into public.warehouses (name, vrprime_id) values ('SP Check Main', 'spchk-1') returning id into w_main;
   insert into public.warehouses (name, vrprime_id) values ('SP Check Other', 'spchk-2') returning id into w_other;
@@ -1529,6 +1535,135 @@ begin
   exception when invalid_parameter_value then blocked := true;
   end;
   assert blocked, 'a deleted plan is gone';
+
+  -- The day book (since 2026-11-26): goods in and dispatch, day by day, for the supplier's owner and VRPRIME only. Checked
+  -- here, while the dispatch sent above is still there.
+  dday := (now() at time zone 'Asia/Kolkata')::date;
+  reset role;
+  -- A goods in from ten days back, kept apart from this week's.
+  insert into public.supplier_item_moves (supplier_id, item_id, qty, reason, moved_on, created_by, created_at, note)
+  values (s_a, i_bottle, 40, 'received', dday - 10, u_scan, (dday - 10)::timestamp at time zone 'Asia/Kolkata' + interval '9 hours', 'old bill');
+  -- Another supplier's goods in, loading and sent dispatch this week, which must never show here.
+  insert into public.supplier_items (supplier_id, name, kind) values (s_b, 'SP B bottle', 'bottle') returning id into i_b;
+  insert into public.supplier_item_moves (supplier_id, item_id, qty, reason, moved_on, created_by) values (s_b, i_b, 7, 'received', dday, u_oth);
+  select * into strict ckb from public.supplier_cartons where supplier_id = s_b order by created_at, carton_no limit 1;
+  update public.supplier_cartons set status = 'loaded', loaded_at = now(), loaded_by = u_oth where id = ckb.id;
+  select * into strict db_b from public.supplier_dispatches where id = ckb.dispatch_id;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_oth, 'role', 'authenticated')::text, true);
+  update public.supplier_dispatches set status = 'closed', closed_at = now(), closed_by = u_oth where id = db_b.id;
+  -- One carton of the dispatch sent has not reached VRPRIME yet.
+  select c.* into strict ck from public.supplier_cartons c join public.supplier_dispatches d on d.id = c.dispatch_id
+   where c.supplier_id = s_a and c.status = 'loaded' and c.inbound_status = 'received' and d.status in ('closed', 'received')
+   order by c.created_at, c.carton_no limit 1;
+  update public.supplier_cartons set inbound_status = null, inbound_at = null where id = ck.id;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  book := public.supplier_day_book(s_a, dday - 6, dday);
+  reset role;
+  assert jsonb_array_length(book->'in') > 0 and jsonb_array_length(book->'loaded') > 0 and jsonb_array_length(book->'sent') > 0,
+    'the check has goods in, loading and a dispatch sent this week';
+  assert (select array_agg((e->>'id')::bigint order by (e->>'id')::bigint) from jsonb_array_elements(book->'in') e)
+       = (select array_agg(id order by id) from public.supplier_item_moves where supplier_id = s_a and reason = 'received' and moved_on between dday - 6 and dday),
+    'the day book lists every goods in of those days, and nothing else';
+  assert not exists (select 1 from jsonb_array_elements(book->'in') e
+                     join public.supplier_item_moves m on m.id = (e->>'id')::bigint
+                     left join public.profiles p on p.id = m.created_by
+                     where e->>'who' <> coalesce(p.name, '') or (e->>'item_id')::uuid <> m.item_id or (e->>'qty')::numeric <> m.qty
+                        or (e->>'day')::date <> m.moved_on or (e->>'at')::timestamptz <> m.created_at
+                        or e->>'photo_path' is distinct from m.photo_path or (e->>'kg')::numeric is distinct from m.weight_kg),
+    'each goods in says when, who entered it, the supply, how much, what it weighed and the bill';
+  assert exists (select 1 from jsonb_array_elements(book->'in') e where e->>'who' = 'SP Scanner' and e->>'photo_path' is not null),
+    'the warehouse person''s goods in are named as his, with the bill photo';
+  assert (select sum((e->>'cartons')::int) from jsonb_array_elements(book->'loaded') e)
+       = (select count(*) from public.supplier_cartons where supplier_id = s_a and status = 'loaded' and (loaded_at at time zone 'Asia/Kolkata')::date between dday - 6 and dday)
+     and (select sum((e->>'units')::int) from jsonb_array_elements(book->'loaded') e)
+       = (select sum(units) from public.supplier_cartons where supplier_id = s_a and status = 'loaded' and (loaded_at at time zone 'Asia/Kolkata')::date between dday - 6 and dday),
+    'every carton loaded on those days is counted once, with its pieces';
+  assert (select count(*) = count(distinct (e->>'day', e->>'dispatch_id', e->>'product_id', e->>'who')) from jsonb_array_elements(book->'loaded') e),
+    'loading is one line per day, dispatch, product and person';
+  assert exists (select 1 from jsonb_array_elements(book->'loaded') e where e->>'who' = 'SP Scanner'), 'loading is named by who scanned';
+  assert not exists (select 1 from jsonb_array_elements(book->'loaded') e
+                     join public.supplier_dispatches d on d.id = (e->>'dispatch_id')::uuid
+                     where d.supplier_id <> s_a or d.number <> (e->>'number')::int or d.status <> e->>'status'),
+    'loading names this supplier''s dispatches, with their numbers';
+  assert (select array_agg(e->>'dispatch_id' order by e->>'dispatch_id') from jsonb_array_elements(book->'sent') e)
+       = (select array_agg(id::text order by id::text) from public.supplier_dispatches
+          where supplier_id = s_a and status in ('closed', 'received') and (closed_at at time zone 'Asia/Kolkata')::date between dday - 6 and dday),
+    'every dispatch sent on those days, and nothing else';
+  assert not exists (select 1 from jsonb_array_elements(book->'sent') e
+                     join public.supplier_dispatches d on d.id = (e->>'dispatch_id')::uuid
+                     left join public.profiles p on p.id = d.closed_by
+                     where e->>'who' <> coalesce(p.name, '') or (e->>'at')::timestamptz <> d.closed_at
+                        or (e->>'cartons')::int <> (select count(*) from public.supplier_cartons c where c.dispatch_id = d.id and c.status = 'loaded')
+                        or (e->>'units')::int <> (select coalesce(sum(c.units), 0) from public.supplier_cartons c where c.dispatch_id = d.id and c.status = 'loaded')
+                        or (e->>'arrived')::int <> (select count(*) from public.supplier_cartons c where c.dispatch_id = d.id and c.status = 'loaded' and c.inbound_status = 'received')),
+    'a sent dispatch shows when and who closed it, its loaded cartons and pieces, and how many reached VRPRIME';
+  assert exists (select 1 from jsonb_array_elements(book->'sent') e where (e->>'dispatch_id')::uuid = ck.dispatch_id and (e->>'arrived')::int < (e->>'cartons')::int),
+    'a dispatch with a carton not yet at VRPRIME says so';
+  assert not exists (select 1 from jsonb_array_elements(book->'in') e where e->>'note' = 'old bill'), 'a goods in before the first day is left out';
+
+  -- VRPRIME sees the same.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_adm, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  res := public.supplier_day_book(s_a, dday - 6, dday);
+  assert res = book, 'VRPRIME sees the same day book as the supplier''s owner';
+  book := public.supplier_day_book(s_a, dday - 10, dday - 10);
+  assert jsonb_array_length(book->'in') = 1 and book->'in'->0->>'note' = 'old bill' and book->'in'->0->>'who' = 'SP Scanner'
+     and jsonb_array_length(book->'loaded') = 0 and jsonb_array_length(book->'sent') = 0,
+    'one day shows only what happened that day';
+  reset role;
+
+  -- The days are India's: a carton loaded at 12:10 am there is on that day, though it is still the day before in UTC.
+  update public.supplier_cartons set loaded_at = (dday - 3)::timestamp at time zone 'Asia/Kolkata' + interval '10 minutes' where id = ck.id;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  book := public.supplier_day_book(s_a, dday - 3, dday - 3);
+  assert jsonb_array_length(book->'loaded') = 1 and (book->'loaded'->0->>'cartons')::int = 1 and book->'loaded'->0->>'day' = (dday - 3)::text
+     and (book->'loaded'->0->>'dispatch_id')::uuid = ck.dispatch_id,
+    'a carton loaded at 12:10 am in India is on that day';
+  book := public.supplier_day_book(s_a, dday - 4, dday - 4);
+  assert jsonb_array_length(book->'loaded') = 0, 'and not on the day before';
+  reset role;
+  update public.supplier_cartons set loaded_at = ck.loaded_at, inbound_status = ck.inbound_status, inbound_at = ck.inbound_at where id = ck.id;
+  update public.supplier_dispatches set status = db_b.status, closed_at = db_b.closed_at, closed_by = db_b.closed_by where id = db_b.id;
+  update public.supplier_cartons set status = ckb.status, loaded_at = ckb.loaded_at, loaded_by = ckb.loaded_by where id = ckb.id;
+  delete from public.supplier_items where id = i_b;
+  delete from public.supplier_item_moves where supplier_id = s_a and note = 'old bill';
+
+  -- A year at most, the first day first.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_raj, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  book := public.supplier_day_book(s_a, dday - 366, dday);
+  assert jsonb_typeof(book->'in') = 'array', 'a whole year can be asked for';
+  foreach t in array array['back to front', 'more than a year', 'no first day'] loop
+    blocked := false;
+    begin
+      perform public.supplier_day_book(s_a, case t when 'back to front' then dday + 1 when 'more than a year' then dday - 367 end, dday);
+    exception when invalid_parameter_value then blocked := true;
+    end;
+    assert blocked, format('the day book refuses a range %s', t);
+  end loop;
+
+  -- Not the warehouse person, another supplier, a switched-off login or a signed-out visitor.
+  foreach q in array array[u_scan, u_oth, u_off] loop
+    perform set_config('request.jwt.claims', json_build_object('sub', q, 'role', 'authenticated')::text, true);
+    blocked := false;
+    begin
+      perform public.supplier_day_book(s_a, dday - 6, dday);
+    exception when insufficient_privilege then blocked := true;
+    end;
+    assert blocked, format('the day book is refused to %s', (select name from public.profiles where id = q));
+  end loop;
+  reset role;
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  blocked := false;
+  begin
+    perform public.supplier_day_book(s_a, dday - 6, dday);
+  exception when insufficient_privilege then blocked := true;
+  end;
+  assert blocked, 'the day book is refused to a signed-out visitor';
+  reset role;
 
   -- Dispatches can be deleted for good too (since 2026-11-26), by VRPRIME only: everything of it goes with it, a
   -- notification that leads to it goes, its people are told to stop loading one still open, and its number is never

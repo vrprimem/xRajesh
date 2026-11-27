@@ -22,8 +22,12 @@ import { StaffLogins, SupplierLogins } from "@/components/supplier/supplier-admi
 import { SuppliesPanel } from "@/components/supplier/supplies-panel";
 import { SyncCard } from "@/components/supplier/sync-card";
 import { GodownDemo } from "./godown-demo";
+import { DayBookView } from "@/components/supplier/day-book";
+import { dayBookSample, sampleDispatchHref } from "./daybook-sample";
 import { Card, PageTitle, SectionHead, buttonClass } from "@/components/ui";
 import { PHONE_LINKS, supplierLinks } from "@/lib/supplier-nav";
+import { bookRange, bookShow } from "@/lib/day-book";
+import { todayIST } from "@/lib/format";
 import { isLow, recipeUses } from "@/lib/supplies";
 import type { DispatchDetail, DispatchSummary, PlanRow, ProduceRow, StockRow } from "@/server/supplier-data";
 import { factorySample } from "./factory-sample";
@@ -84,7 +88,7 @@ const PLANS: PlanRow[] = [
   ] },
 ];
 
-const VIEWS = ["home", "godown", "production", "supplies", "money", "more", "delivery", "newdispatch", "dispatch", "bigdispatch", "sentdispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
+const VIEWS = ["home", "godown", "daybook", "production", "supplies", "money", "more", "delivery", "newdispatch", "dispatch", "bigdispatch", "sentdispatch", "scan", "labels", "products", "vrprime", "plan", "reset", "signin"] as const;
 
 const PREVIEW_HREF: Record<string, string> = {
   "/supplier": "/dev/supplier",
@@ -94,6 +98,7 @@ const PREVIEW_HREF: Record<string, string> = {
   "/supplier/scan": "/dev/supplier?view=scan",
   "/supplier/money": "/dev/supplier?view=money",
   "/supplier/supplies": "/dev/supplier?view=supplies",
+  "/supplier/daybook": "/dev/supplier?view=daybook",
   "/supplier/products": "/dev/supplier?view=products",
   "/supplier/reports": "/dev/supplier?view=vrprime",
   "/supplier/alerts": "/dev/supplier?view=plan",
@@ -173,6 +178,25 @@ export default async function SupplierPreviewPage({ searchParams }: { searchPara
       ) : null}
 
       {view === "godown" ? <GodownDemo view={sp.who === "vrprime" ? "vrprime" : sp.who === "scanner" ? "staff" : "owner"} /> : null}
+
+      {view === "daybook" ? (() => {
+        // Rajesh's day book, or VRPRIME's with &who=vrprime. The dates and the choice of what to show work on the sample.
+        const today = todayIST();
+        const range = bookRange(sp.from, sp.to, today);
+        const keep: Record<string, string> = { view: "daybook", ...(sp.who === "vrprime" ? { who: "vrprime" } : {}) };
+        return (
+          <DayBookView
+            data={dayBookSample(today, range)}
+            range={range}
+            show={bookShow(sp.show)}
+            today={today}
+            base="/dev/supplier"
+            keep={keep}
+            dispatchHref={sampleDispatchHref}
+            title={sp.who === "vrprime" ? "Rajesh Industries: day book" : "Day book"}
+          />
+        );
+      })() : null}
 
       {view === "production" ? (
         <div className="flex flex-col gap-4">

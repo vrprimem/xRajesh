@@ -628,6 +628,13 @@ select optgroup {
     border-color: var(--accent);
     box-shadow: none;
   }
+  /* The choice now in use among links (the day book's dates, what it shows): the same soft indigo. */
+  .g-btn[aria-current="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-color: var(--accent);
+    box-shadow: none;
+  }
   .g-btn-secondary,
   .g-btn-outline {
     background: var(--surface);

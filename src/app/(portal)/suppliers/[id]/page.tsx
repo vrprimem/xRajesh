@@ -67,6 +67,9 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
             <Link href={`${base}/godown`} className={buttonClass("outline")}>
               Godown
             </Link>
+            <Link href={`${base}/daybook`} className={buttonClass("outline")}>
+              Day book
+            </Link>
             <Link href={`${base}/production`} className={buttonClass("outline")}>
               Production
             </Link>

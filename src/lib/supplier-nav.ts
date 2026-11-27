@@ -26,6 +26,7 @@ export function supplierLinks(role: SupplierRole, unread: number): NavLink[] {
     { href: "/supplier/godown", label: "Godown" },
     { href: "/supplier/dispatches", label: "Dispatches" },
     { href: "/supplier/supplies", label: "Supplies" },
+    { href: "/supplier/daybook", label: "Day book" },
     { href: "/supplier/products", label: "Products" },
     { href: "/supplier/reports", label: "Reports" },
     { href: "/supplier/alerts", label: "Alerts", badge: unread },
